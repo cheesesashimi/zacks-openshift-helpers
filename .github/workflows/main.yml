@@ -1,0 +1,4 @@
+- name: GoReleaser Action
+  # You may pin to the exact commit or the version.
+  # uses: goreleaser/goreleaser-action@3fa32b8bb5620a2c1afe798654bbad59f9da4906
+  uses: goreleaser/goreleaser-action@v4.4.0
