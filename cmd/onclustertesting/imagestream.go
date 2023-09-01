@@ -27,7 +27,7 @@ func getImagestreamPullspec(cs *framework.ClientSet, name string) (string, error
 	return appendTagToPullspec(is.Status.DockerImageRepository, "latest")
 }
 
-// Not sure if htis is strictly required, but we'll do it anyway.
+// Not sure if this is strictly required, but we'll do it anyway.
 func appendTagToPullspec(pullspec, tag string) (string, error) {
 	named, err := reference.ParseNamed(pullspec)
 	if err != nil {

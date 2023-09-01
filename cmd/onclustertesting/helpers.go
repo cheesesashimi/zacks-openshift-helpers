@@ -208,7 +208,7 @@ func renderDockerfileToDisk(cs *framework.ClientSet, targetPool, dir string) err
 	return renderDockerfile(ibr, dockerfile, false)
 }
 
-func createPool(cs *framework.ClientSet, poolName string) (*mcfgv1.MachineConfigPool, error) {
+func createPool(cs *framework.ClientSet, poolName string) (*mcfgv1.MachineConfigPool, error) { //nolint:unparam // This may eventually be used.
 	pool := &mcfgv1.MachineConfigPool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: poolName,

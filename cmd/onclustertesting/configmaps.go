@@ -13,7 +13,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func createConfigMap(cs *framework.ClientSet, cm *corev1.ConfigMap) error {
+func createConfigMap(cs *framework.ClientSet, cm *corev1.ConfigMap) error { //nolint:dupl // These are ConfigMaps.
 	_, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Create(context.TODO(), cm, metav1.CreateOptions{})
 	if err == nil {
 		klog.Infof("Created ConfigMap %q in namespace %q", cm.Name, ctrlcommon.MCONamespace)

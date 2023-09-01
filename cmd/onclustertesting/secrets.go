@@ -53,7 +53,7 @@ func copyGlobalPullSecret(cs *framework.ClientSet) error {
 	return nil
 }
 
-func createSecret(cs *framework.ClientSet, s *corev1.Secret) error {
+func createSecret(cs *framework.ClientSet, s *corev1.Secret) error { //nolint:dupl // These are secrets.
 	_, err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 	if err == nil {
 		klog.Infof("Created secret %q in namespace %q", s.Name, ctrlcommon.MCONamespace)
