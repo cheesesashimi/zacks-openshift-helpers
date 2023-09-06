@@ -4,6 +4,15 @@ before:
     - go mod tidy
     - go test -count=1 -v ./...
 builds:
+  - main: ./cmd/cluster-lifecycle
+    id: "cluster-lifecycle"
+    binary: cluster-lifecycle
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
   - main: ./cmd/onclustertesting
     id: "onclustertesting"
     binary: onclustertesting

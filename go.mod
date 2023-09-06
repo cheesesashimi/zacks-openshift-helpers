@@ -8,12 +8,14 @@ require (
 	github.com/docker/distribution v2.8.1+incompatible
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32
 	github.com/openshift/api v0.0.0-20230613151523-ba04973d3ed1
+	github.com/openshift/client-go v0.0.0-20230607134213-3cd0021bbee3
 	github.com/openshift/machine-config-operator v0.0.1-0.20230828190740-2ea9a64d5149
 	github.com/spf13/cobra v1.7.0
 	k8s.io/api v0.27.3
 	k8s.io/apimachinery v0.27.3
 	k8s.io/client-go v0.27.3
 	k8s.io/component-base v0.27.3
+	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.100.1
 )
 
@@ -78,7 +80,6 @@ require (
 	github.com/opencontainers/image-spec v1.1.0-rc2 // indirect
 	github.com/opencontainers/runc v1.1.6 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20220909204839-494a5a6aca78 // indirect
-	github.com/openshift/client-go v0.0.0-20230607134213-3cd0021bbee3 // indirect
 	github.com/openshift/library-go v0.0.0-20230614142803-865e70cc6b32 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
