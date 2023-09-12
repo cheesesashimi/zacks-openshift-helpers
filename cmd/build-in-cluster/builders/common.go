@@ -9,6 +9,14 @@ import (
 	"k8s.io/klog"
 )
 
+type Opts struct {
+	RepoRoot       string
+	PullSecretPath string
+	PushSecretPath string
+	FinalPullspec  string
+	DockerfileName string
+}
+
 func makeBinaries(repoRoot string) error {
 	u, err := user.Current()
 	if err != nil {

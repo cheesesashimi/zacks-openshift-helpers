@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/containers"
 	"k8s.io/klog"
 )
 
@@ -17,20 +16,20 @@ func NewPodmanBuilder(opts Opts) PodmanBuilder {
 	return PodmanBuilder{opts: opts}
 }
 
-func (p *PodmanBuilder) Build() (string, error) {
+func (p *PodmanBuilder) Build() error {
 	if err := makeBinaries(p.opts.RepoRoot); err != nil {
-		return "", err
+		return err
 	}
 
 	if err := p.buildContainer(); err != nil {
-		return "", fmt.Errorf("unable to build container: %w", err)
+		return fmt.Errorf("unable to build container: %w", err)
 	}
 
 	if err := p.pushContainer(); err != nil {
-		return "", fmt.Errorf("unable to push container: %w", err)
+		return fmt.Errorf("unable to push container: %w", err)
 	}
 
-	return containers.ResolveToDigestedPullspec(p.opts.FinalPullspec, p.opts.PushSecretPath)
+	return nil
 }
 
 func (p *PodmanBuilder) buildContainer() error {

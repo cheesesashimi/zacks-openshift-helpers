@@ -10,16 +10,23 @@ import (
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	aggerrs "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog"
 
 	"github.com/openshift/machine-config-operator/test/framework"
 )
 
+const (
+	buildName string = "mco-image-build"
+)
+
 type OpenshiftBuilderOpts struct {
-	Opts
+	ImageStreamName     string
 	ImageStreamPullspec string
 	Dockerfile          string
 	BranchName          string
 	RemoteURL           string
+	FollowBuild         bool
 }
 
 type OpenshiftBuilder struct {
@@ -34,64 +41,66 @@ func NewOpenshiftBuilder(cs *framework.ClientSet, opts OpenshiftBuilderOpts) *Op
 	}
 }
 
-func (o *OpenshiftBuilder) Build() (string, error) {
+func (o *OpenshiftBuilder) Build() error {
 	_, err := o.cs.BuildV1Interface.Builds(ctrlcommon.MCONamespace).Create(context.TODO(), o.prepareBuild(), metav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("could not create build: %w", err)
+		return fmt.Errorf("could not create build: %w", err)
 	}
+
+	klog.Infof("Build %s created, waiting for completion...", buildName)
 
 	if err := o.waitForBuildToComplete(); err != nil {
-		return "", err
+		return err
 	}
 
-	return o.getImagePullspec(), nil
-}
+	klog.Infof("Build %s completed. Cleaning up build object...", buildName)
+	err = o.cs.BuildV1Interface.Builds(ctrlcommon.MCONamespace).Delete(context.TODO(), buildName, metav1.DeleteOptions{})
 
-func (o *OpenshiftBuilder) getImagePullspec() string {
-	return o.opts.ImageStreamPullspec + ":latest"
+	return nil
 }
 
 func (o *OpenshiftBuilder) waitForBuildToComplete() error {
-	cmd := exec.Command("oc", "logs", "-f", "build/mco-image-build", "-n", ctrlcommon.MCONamespace)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	name := fmt.Sprintf("build/%s", buildName)
+	cmd := exec.Command("oc", "logs", "-f", name, "-n", ctrlcommon.MCONamespace)
+
+	if o.opts.FollowBuild {
+		klog.Infof("Streaming build logs...")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
+	cmdErr := cmd.Run()
+	if cmdErr == nil {
+		return nil
+	}
+
+	b, err := o.cs.BuildV1Interface.Builds(ctrlcommon.MCONamespace).Get(context.TODO(), buildName, metav1.GetOptions{})
+	if err != nil {
+		return aggerrs.NewAggregate([]error{
+			err,
+			cmdErr,
+		})
+	}
+
+	if b.Status.Phase == buildv1.BuildPhaseComplete {
+		return nil
+	}
+
+	runningStatuses := map[buildv1.BuildPhase]struct{}{
+		buildv1.BuildPhaseNew:     {},
+		buildv1.BuildPhasePending: {},
+		buildv1.BuildPhaseRunning: {},
+	}
+
+	if _, ok := runningStatuses[b.Status.Phase]; ok {
+		return o.waitForBuildToComplete()
+	}
+
+	return fmt.Errorf("build is in phase %s: %w", b.Status.Phase, cmdErr)
 }
 
 func (o *OpenshiftBuilder) prepareBuild() *buildv1.Build {
 	skipLayers := buildv1.ImageOptimizationSkipLayers
-
-	//    return {
-	//        "apiVersion": "build.openshift.io/v1",
-	//        "kind": "Build",
-	//        "metadata": {
-	//            "name": "mco-image-build",
-	//            "namespace": MCO_NAMESPACE,
-	//        },
-	//        "spec": {
-	//            "output": {
-	//                "to": {
-	//                    "kind": "ImageStreamTag",
-	//                    "name": get_mco_imagestream_spec()["metadata"]["name"] + ":latest",
-	//                }
-	//            },
-	//            "postCommit": {},
-	//            "serviceAccount": "builder",
-	//            "source": {
-	//                # Delete this line once https://issues.redhat.com/browse/MCO-603 is resolved
-	//                "dockerfile": dockerfile,
-	//                "git": {
-	//                    "uri": get_git_remote(),
-	//                    "ref": get_git_branch(),
-	//                },
-	//                "type": "Dockerfile"
-	//            },
-	//            "strategy": {
-	//                "dockerStrategy": {},
-	//                "type": "Docker"
-	//            }
-	//        }
-	//    }
 
 	return &buildv1.Build{
 		TypeMeta: metav1.TypeMeta{
@@ -99,7 +108,7 @@ func (o *OpenshiftBuilder) prepareBuild() *buildv1.Build {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: ctrlcommon.MCONamespace,
-			Name:      "mco-image-build",
+			Name:      buildName,
 		},
 		Spec: buildv1.BuildSpec{
 			CommonSpec: buildv1.CommonSpec{
@@ -121,7 +130,7 @@ func (o *OpenshiftBuilder) prepareBuild() *buildv1.Build {
 				},
 				Output: buildv1.BuildOutput{
 					To: &corev1.ObjectReference{
-						Name: o.getImagePullspec(),
+						Name: o.opts.ImageStreamName + ":latest",
 						Kind: "ImageStreamTag",
 					},
 				},

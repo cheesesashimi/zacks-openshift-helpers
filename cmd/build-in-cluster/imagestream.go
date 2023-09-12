@@ -47,9 +47,6 @@ func createImagestream(cs *framework.ClientSet, name string) error {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ctrlcommon.MCONamespace,
-			Labels:    map[string]string{
-				//				createdByOnClusterBuildsHelper: "",
-			},
 		},
 	}
 

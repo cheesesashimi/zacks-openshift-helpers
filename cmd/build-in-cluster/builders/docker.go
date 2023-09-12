@@ -7,17 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/containers"
 	"k8s.io/klog"
 )
-
-type Opts struct {
-	RepoRoot       string
-	PullSecretPath string
-	PushSecretPath string
-	FinalPullspec  string
-	DockerfileName string
-}
 
 type DockerBuilder struct {
 	opts Opts
@@ -27,20 +18,21 @@ func NewDockerBuilder(opts Opts) DockerBuilder {
 	return DockerBuilder{opts: opts}
 }
 
-func (d *DockerBuilder) Build() (string, error) {
+func (d *DockerBuilder) Build() error {
 	if err := makeBinaries(d.opts.RepoRoot); err != nil {
-		return "", err
+		return err
 	}
 
 	if err := d.buildContainer(); err != nil {
-		return "", fmt.Errorf("unable to build container: %w", err)
+		return fmt.Errorf("unable to build container: %w", err)
 	}
 
 	if err := d.pushContainer(); err != nil {
-		return "", fmt.Errorf("unable to push container: %w", err)
+		return fmt.Errorf("unable to push container: %w", err)
 	}
 
-	return containers.ResolveToDigestedPullspec(d.opts.FinalPullspec, d.opts.PushSecretPath)
+	return nil
+	// return containers.ResolveToDigestedPullspec(d.opts.FinalPullspec, d.opts.PushSecretPath)
 }
 
 func (d *DockerBuilder) buildContainer() error {

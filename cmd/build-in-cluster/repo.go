@@ -109,12 +109,16 @@ func getGitInfo(repoRoot string) (*gitInfo, error) {
 	}
 
 	gi := &gitInfo{
-		branchName: strings.ReplaceAll(branchName, "/", "_"),
+		branchName: branchName,
 		remoteURL:  remoteURL,
 		repoRoot:   repoRoot,
 	}
 
 	return gi, nil
+}
+
+func sanitizeBranchName(branchName string) string {
+	return strings.ReplaceAll(branchName, "/", "_")
 }
 
 func getURLFromRemotes(remotes []*git.Remote) (string, error) {
