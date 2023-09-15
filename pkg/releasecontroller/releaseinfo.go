@@ -24,3 +24,15 @@ func GetComponentPullspecForRelease(componentName, releasePullspec string) (stri
 
 	return strings.TrimSpace(outBuf.String()), nil
 }
+
+func GetReleaseInfo(releasePullspec string) ([]byte, error) {
+	outBuf := bytes.NewBuffer([]byte{})
+	cmd := exec.Command("oc", "adm", "release", "info", "-o=json", releasePullspec)
+	cmd.Stdout = outBuf
+
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+
+	return outBuf.Bytes(), nil
+}

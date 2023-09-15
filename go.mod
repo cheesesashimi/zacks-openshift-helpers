@@ -3,6 +3,7 @@ module github.com/cheesesashimi/zacks-openshift-helpers
 go 1.20
 
 require (
+	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/containers/image/v5 v5.24.2
 	github.com/coreos/ignition/v2 v2.15.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
@@ -27,6 +28,7 @@ require (
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
+	github.com/PaesslerAG/gval v1.0.0 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20230717121422-5aa5874ade95 // indirect
 	github.com/acomagu/bufpipe v1.0.4 // indirect
 	github.com/ajeddeloh/go-json v0.0.0-20200220154158-5ae607161559 // indirect

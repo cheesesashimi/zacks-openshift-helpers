@@ -9,6 +9,7 @@ import (
 	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/releasecontroller"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 )
 
@@ -27,14 +28,15 @@ func init() {
 	rootCmd.AddCommand(setupCmd)
 	setupCmd.PersistentFlags().StringVar(&setupOpts.postInstallManifestPath, "post-install-manifests", "", "Directory containing K8s manifests to apply after successful installation.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", defaultPullSecretPath, "Path to a pull secret that can pull from registry.ci.openshift.org")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseArch, "release-arch", "amd64", fmt.Sprintf("Release arch, one of: %v", installconfig.GetSupportedArches().List()))
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseKind, "release-kind", "ocp", fmt.Sprintf("Release kind, one of: %v", installconfig.GetSupportedKinds().List()))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.releasePullspec, "release-pullspec", "", "An arbitrary release pullspec to spin up.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseArch, "release-arch", "amd64", fmt.Sprintf("Release arch, one of: %v", sets.List(installconfig.GetSupportedArches())))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseKind, "release-kind", "ocp", fmt.Sprintf("Release kind, one of: %v", sets.List(installconfig.GetSupportedKinds())))
 	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseStream, "release-stream", "4.14.0-0.ci", "The release stream to use")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.sshKeyPath, "ssh-key-path", defaultSSHKeyPath, "Path to an SSH key to embed in the installation config.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.prefix, "prefix", "$USER", "Prefix to add to the cluster name; will use current system user if not set.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.workDir, "work-dir", defaultWorkDir, "The directory to use for running openshift-install. Enables vacation and persistent install mode when used in a cron job.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
-	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", installconfig.GetSupportedVariants().List()))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", sets.List(installconfig.GetSupportedVariants())))
 }
 
 func runSetupCmd(_ *cobra.Command, _ []string) {
@@ -65,9 +67,17 @@ func runSetup() error {
 		return err
 	}
 
-	releasePullspec, err := getRelease(setupOpts)
+	releasePullspec, err := getRelease(&setupOpts)
 	if err != nil {
 		return err
+	}
+
+	klog.Infof("Cluster name: %s", setupOpts.clusterName())
+
+	if setupOpts.releaseStream != "" {
+		klog.Infof("Cluster kind: %s. Cluster arch: %s. Release stream: %s", setupOpts.releaseKind, setupOpts.releaseArch, setupOpts.releaseStream)
+	} else {
+		klog.Infof("Cluster kind: %s. Cluster arch: %s.", setupOpts.releaseKind, setupOpts.releaseArch)
 	}
 
 	klog.Infof("Found release %s", releasePullspec)
@@ -156,14 +166,18 @@ func applyPostInstallManifests(opts inputOpts) error {
 	return cmd.Run()
 }
 
-func getRelease(opts inputOpts) (string, error) {
+func getRelease(opts *inputOpts) (string, error) {
+	if opts.releasePullspec != "" {
+		return opts.releasePullspec, opts.inferArchAndKindFromPullspec(opts.releasePullspec)
+	}
+
 	releaseFileExists, err := isFileExists(opts.releaseFilePath())
 	if err != nil {
 		return "", err
 	}
 
 	if !releaseFileExists {
-		return getReleaseFromController(opts)
+		return getReleaseFromController(*opts)
 	}
 
 	return getReleaseFromFile(opts)
@@ -185,7 +199,7 @@ func getReleaseFromController(opts inputOpts) (string, error) {
 	return release.Pullspec, nil
 }
 
-func getReleaseFromFile(opts inputOpts) (string, error) {
+func getReleaseFromFile(opts *inputOpts) (string, error) {
 	releasePath := filepath.Join(opts.workDir, persistentReleaseFile)
 	releaseBytes, err := os.ReadFile(releasePath)
 	if err != nil {
@@ -197,7 +211,7 @@ func getReleaseFromFile(opts inputOpts) (string, error) {
 		return "", fmt.Errorf("release file %s exists, but is empty", releasePath)
 	}
 
-	return release, nil
+	return release, opts.inferArchAndKindFromPullspec(release)
 }
 
 func isInVacationMode(opts inputOpts) (bool, error) {

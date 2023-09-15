@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/user"
 	"path/filepath"
 	"strings"
 
+	"github.com/PaesslerAG/jsonpath"
 	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/installconfig"
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/releasecontroller"
 	"k8s.io/klog"
 )
 
@@ -22,6 +25,7 @@ type inputOpts struct {
 	pullSecretPath          string
 	releaseArch             string
 	releaseKind             string
+	releasePullspec         string
 	releaseStream           string
 	sshKeyPath              string
 	prefix                  string
@@ -63,6 +67,56 @@ func (i *inputOpts) validateForTeardown() error {
 	return fixProvidedPath(&i.workDir)
 }
 
+func (i *inputOpts) inferArchAndKindFromPullspec(pullspec string) error {
+	releaseInfoBytes, err := releasecontroller.GetReleaseInfo(pullspec)
+	if err != nil {
+		return err
+	}
+
+	releaseInfo := interface{}(nil)
+
+	if err := json.Unmarshal(releaseInfoBytes, &releaseInfo); err != nil {
+		return err
+	}
+
+	arch, err := jsonpath.Get(`config.architecture`, releaseInfo)
+	if err != nil {
+		return err
+	}
+
+	i.releaseArch = arch.(string)
+
+	if i.releaseArch == "" {
+		return fmt.Errorf("empty architecture field for release %s", pullspec)
+	}
+
+	releaseName, err := jsonpath.Get(`references.metadata.name`, releaseInfo)
+	if err != nil {
+		return err
+	}
+
+	releaseNameStr := releaseName.(string)
+
+	if releaseNameStr == "" {
+		return fmt.Errorf("empty release name field for release %s", pullspec)
+	}
+
+	if strings.Contains(releaseNameStr, "okd-scos") {
+		i.releaseKind = "okd-scos"
+	} else if strings.Contains(releaseNameStr, "okd") {
+		i.releaseKind = "okd"
+	} else {
+		i.releaseKind = "ocp"
+	}
+
+	// Clear the release stream since we won't talk to a release controller here.
+	i.releaseStream = ""
+
+	klog.Infof("Inferred %s and %s for release %s", i.releaseArch, i.releaseKind, pullspec)
+
+	return nil
+}
+
 func (i *inputOpts) validateForSetup() error {
 	if err := fixProvidedPath(&i.workDir); err != nil {
 		return err
@@ -93,16 +147,23 @@ func (i *inputOpts) validateForSetup() error {
 
 	klog.Infof("Using prefix: %s", i.prefix)
 
-	if i.releaseKind == "okd-scos" && !strings.Contains(i.releaseStream, "scos") {
-		return fmt.Errorf("invalid release stream %q for kind okd-scos", i.releaseStream)
-	}
+	if i.releasePullspec == "" {
+		if i.releaseKind == "okd-scos" && !strings.Contains(i.releaseStream, "scos") {
+			return fmt.Errorf("invalid release stream %q for kind okd-scos", i.releaseStream)
+		}
 
-	if i.releaseKind == "okd" && strings.Contains(i.releaseStream, "scos") {
-		return fmt.Errorf("invalid release stream %q for kind okd", i.releaseStream)
-	}
+		if i.releaseKind == "okd" && strings.Contains(i.releaseStream, "scos") {
+			return fmt.Errorf("invalid release stream %q for kind okd", i.releaseStream)
+		}
+	} else {
+		if i.releaseKind == "" {
+			klog.Warningf("--release-kind will be ignored because --release-pullspec was used")
+		}
 
-	klog.Infof("Cluster name: %s", i.clusterName())
-	klog.Infof("Cluster kind: %s. Cluster arch: %s. Release stream: %s", i.releaseKind, i.releaseArch, i.releaseStream)
+		if i.releaseArch == "" {
+			klog.Warningf("--release-arch will be ignored because --release-pullspec was used")
+		}
+	}
 
 	return nil
 }

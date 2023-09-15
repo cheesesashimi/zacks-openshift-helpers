@@ -71,8 +71,8 @@ func teardown() error {
 
 func gracefulTeardown(opts inputOpts) error {
 	filesToCheckFor := []string{
-		teardownOpts.installerPath(),
-		teardownOpts.appendWorkDir("metadata.json"),
+		opts.installerPath(),
+		opts.appendWorkDir("metadata.json"),
 	}
 
 	for _, file := range filesToCheckFor {
@@ -87,11 +87,11 @@ func gracefulTeardown(opts inputOpts) error {
 		}
 	}
 
-	if err := destroyCluster(teardownOpts); err != nil {
+	if err := destroyCluster(opts); err != nil {
 		return fmt.Errorf("unable to destroy cluster: %w", err)
 	}
 
-	if err := teardownWorkDir(teardownOpts); err != nil {
+	if err := teardownWorkDir(opts); err != nil {
 		return fmt.Errorf("unable to teardown workdir: %w", err)
 	}
 

@@ -15,12 +15,6 @@ import (
 )
 
 func extractInstaller(releasePullspec string, opts inputOpts) error {
-	klog.Infof("Extracting installer to %s", opts.workDir)
-	start := time.Now()
-	defer func() {
-		klog.Infof("Installer extracted in %s", time.Since(start))
-	}()
-
 	installerPath := opts.installerPath()
 
 	installerExists, err := isFileExists(installerPath)
@@ -29,6 +23,12 @@ func extractInstaller(releasePullspec string, opts inputOpts) error {
 	}
 
 	if !installerExists {
+		klog.Infof("Extracting installer to %s", opts.workDir)
+		start := time.Now()
+		defer func() {
+			klog.Infof("Installer extracted in %s", time.Since(start))
+		}()
+
 		cmd := exec.Command("oc", "adm", "release", "extract", "--registry-config", opts.pullSecretPath, "--command", "openshift-install", releasePullspec, "--to", opts.workDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
