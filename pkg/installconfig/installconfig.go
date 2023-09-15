@@ -6,7 +6,76 @@ import (
 	"os"
 
 	"github.com/ghodss/yaml"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
+
+// Architectures
+const (
+	arm64 string = "arm64"
+	amd64 string = "amd64"
+	multi string = "multi"
+)
+
+// Kinds
+const (
+	ocp     string = "ocp"
+	okd     string = "okd"
+	okdSCOS string = "okd-scos"
+)
+
+// Variants
+const (
+	singleNode string = "single-node"
+)
+
+func GetSupportedArchesAndKinds() map[string]map[string]struct{} {
+	return map[string]map[string]struct{}{
+		ocp: {
+			amd64: {},
+			arm64: {},
+			multi: {},
+		},
+		okd: {
+			amd64: struct{}{},
+		},
+		okdSCOS: {
+			amd64: struct{}{},
+		},
+	}
+}
+
+func IsValidKindAndArch(kind, arch string) (bool, error) {
+	ic := GetSupportedArchesAndKinds()
+
+	if _, ok := ic[kind]; !ok {
+		return false, fmt.Errorf("invalid kind %q, valid kinds: %v", kind, sets.StringKeySet(ic).List())
+	}
+
+	if _, ok := ic[kind][arch]; !ok {
+		return false, fmt.Errorf("invalid arch %q for kind %q, valid arch(s): %v", arch, kind, sets.StringKeySet(ic[kind]).List())
+	}
+
+	return true, nil
+}
+
+func GetSupportedVariants() sets.String {
+	return sets.NewString(singleNode)
+}
+
+func IsSupportedVariant(variant string) (bool, error) {
+	vars := GetSupportedVariants()
+	if vars.Has(variant) {
+		return true, nil
+	}
+
+	return false, fmt.Errorf("invalid variant %q, valid variant(s): %v", variant, vars.List())
+}
+
+//go:embed single-node-install-config-amd64.yaml
+var singleNodeInstallConfigAMD64 []byte
+
+//go:embed single-node-install-config-arm64.yaml
+var singleNodeInstallConfigARM64 []byte
 
 //go:embed base-install-config-amd64.yaml
 var baseInstallConfigAMD64 []byte
@@ -15,20 +84,44 @@ var baseInstallConfigAMD64 []byte
 var baseInstallConfigARM64 []byte
 
 type Opts struct {
-	Username       string
+	Prefix         string
 	Arch           string
 	Kind           string
 	SSHKeyPath     string
 	PullSecretPath string
+	Variant        string
 }
 
 func (o *Opts) ClusterName() string {
-	return fmt.Sprintf("%s-%s-%s", o.Username, o.Kind, o.Arch)
+	baseName := fmt.Sprintf("%s-%s-%s", o.Prefix, o.Kind, o.Arch)
+	if o.Variant == "" {
+		return baseName
+	}
+
+	if o.Variant == singleNode {
+		return fmt.Sprintf("%s-sno", baseName)
+	}
+
+	return fmt.Sprintf("%s-%s", baseName, o.Variant)
+}
+
+func (o *Opts) validateVariant() error {
+	if _, err := IsSupportedVariant(o.Variant); err != nil {
+		return err
+	}
+
+	supportedSNOArches := sets.NewString("amd64", "arm64")
+
+	if o.Variant == "single-node" && !supportedSNOArches.Has(o.Arch) {
+		return fmt.Errorf("arch %q is unsupported by single-node variant", o.Arch)
+	}
+
+	return nil
 }
 
 func (o *Opts) validate() error {
-	if o.Username == "" {
-		return fmt.Errorf("username must be provided")
+	if o.Prefix == "" {
+		return fmt.Errorf("prefix must be provided")
 	}
 
 	if o.SSHKeyPath == "" {
@@ -55,36 +148,33 @@ func (o *Opts) validate() error {
 		return fmt.Errorf("kind must be provided")
 	}
 
-	ic := map[string]map[string]struct{}{
-		"ocp": {
-			"amd64": {},
-			"arm64": {},
-			"multi": {},
-		},
-		"okd": {
-			"amd64": struct{}{},
-		},
-		"okd-scos": {
-			"amd64": struct{}{},
-		},
+	if _, err := IsValidKindAndArch(o.Kind, o.Arch); err != nil {
+		return err
 	}
 
-	if _, ok := ic[o.Kind]; !ok {
-		return fmt.Errorf("invalid kind %q", o.Kind)
-	}
-
-	if _, ok := ic[o.Kind][o.Arch]; !ok {
-		return fmt.Errorf("invalid arch %q for kind %q", o.Arch, o.Kind)
+	if o.Variant != "" {
+		if err := o.validateVariant(); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
+func (o *Opts) getSingleNodeConfig() []byte {
+	snoConfigs := map[string][]byte{
+		amd64: singleNodeInstallConfigAMD64,
+		arm64: singleNodeInstallConfigARM64,
+	}
+
+	return snoConfigs[o.Arch]
+}
+
 func (o *Opts) getBaseConfig() []byte {
 	baseConfigs := map[string][]byte{
-		"amd64": baseInstallConfigAMD64,
-		"arm64": baseInstallConfigARM64,
-		"multi": baseInstallConfigAMD64,
+		amd64: baseInstallConfigAMD64,
+		arm64: baseInstallConfigARM64,
+		multi: baseInstallConfigAMD64,
 	}
 
 	return baseConfigs[o.Arch]
@@ -112,7 +202,12 @@ func renderConfig(opts Opts) ([]byte, error) {
 	// TODO: Use an actual struct for this.
 	parsed := map[string]interface{}{}
 
-	if err := yaml.Unmarshal(opts.getBaseConfig(), &parsed); err != nil {
+	config := opts.getBaseConfig()
+	if opts.Variant == singleNode {
+		config = opts.getSingleNodeConfig()
+	}
+
+	if err := yaml.Unmarshal(config, &parsed); err != nil {
 		return nil, err
 	}
 
