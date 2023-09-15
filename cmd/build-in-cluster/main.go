@@ -1,21 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/build-in-cluster/builders"
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/releasecontroller"
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/errors"
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/util/retry"
 
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/klog"
@@ -25,25 +27,57 @@ const (
 	hardcodedRepoRoot string = "/Users/zzlotnik/go/src/github.com/openshift/machine-config-operator"
 )
 
-func revert() error {
+func setupForPushIntoCluster() error {
 	cs := framework.NewClientSet("")
 
-	clusterVersion, err := cs.ConfigV1Interface.ClusterVersions().Get(context.TODO(), "version", metav1.GetOptions{})
+	if err := setDeploymentReplicas(cs, "cluster-version-operator", "openshift-cluster-version", 0); err != nil {
+		return err
+	}
+
+	cmd := exec.Command("oc", "get", "-n", "openshift-image-registry", "route/image-registry")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if !strings.Contains(string(out), `Error from server (NotFound): routes.route.openshift.io "image-registry" not found`) {
+			return errors.NewExecError(cmd, out, err)
+		}
+
+		cmd = exec.Command("oc", "expose", "-n", "openshift-image-registry", "svc/image-registry")
+		out, err = cmd.CombinedOutput()
+		if err != nil {
+			return errors.NewExecError(cmd, out, err)
+		}
+	}
+
+	registryPatchSpec := `{"spec": {"tls": {"insecureEdgeTerminationPolicy": "Redirect", "termination": "reencrypt"}}}`
+	cmd = exec.Command("oc", "patch", "-n", "openshift-image-registry", "route/image-registry", "-p", registryPatchSpec)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		return errors.NewExecError(cmd, out, err)
+	}
+
+	cmd = exec.Command("oc", "get", "openshift-image-registry", "-o=jsonpath={.spec.host}", "route/image-registry")
+	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
 
-	currentRelease := clusterVersion.Status.Desired.Image
-	originalMCOImage, err := releasecontroller.GetComponentPullspecForRelease("machine-config-operator", currentRelease)
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return err
 	}
 
-	if err := rollout(cs, originalMCOImage); err != nil {
+	stdoutBuf := bytes.NewBuffer([]byte{})
+	if _, err := io.Copy(stdoutBuf, stdoutPipe); err != nil {
 		return err
 	}
 
-	return setDeploymentReplicas(cs, "cluster-version-operator", "openshift-cluster-version", 1)
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+
+	registryHostName := stdoutBuf.String()
+
+	klog.Infof("Exposed %s for container registry", registryHostName)
+	return nil
 }
 
 func doOpenshiftBuild(cs *framework.ClientSet) (string, error) {
@@ -89,11 +123,11 @@ func doOpenshiftBuild(cs *framework.ClientSet) (string, error) {
 func buildLocallyAndDeploy() error {
 	gi, err := getGitInfo(hardcodedRepoRoot)
 	if err != nil {
-		klog.Fatalln(err)
+		return err
 	}
 
 	if err := setupRepo(gi); err != nil {
-		klog.Fatalln(err)
+		return err
 	}
 
 	opts := builders.Opts{
@@ -118,15 +152,15 @@ func buildLocallyAndDeploy() error {
 
 	for _, file := range files {
 		if _, err := os.Stat(file); err != nil {
-			klog.Fatalln(err)
+			return err
 		}
 	}
 
 	if err := teardownRepo(gi); err != nil {
-		klog.Fatalln(err)
+		return err
 	}
 
-	return rollout(framework.NewClientSet(""), opts.FinalPullspec)
+	return rollout.ReplaceMCOImage(framework.NewClientSet(""), opts.FinalPullspec)
 }
 
 func buildInClusterAndDeploy() error {
@@ -137,257 +171,150 @@ func buildInClusterAndDeploy() error {
 		return err
 	}
 
-	return rollout(cs, pullspec)
+	return rollout.ReplaceMCOImage(cs, pullspec)
 }
 
-func rollout(cs *framework.ClientSet, pullspec string) error {
-	if err := setDeploymentReplicas(cs, "cluster-version-operator", "openshift-cluster-version", 0); err != nil {
-		return err
-	}
-
-	if err := setDeploymentReplicas(cs, "machine-config-operator", ctrlcommon.MCONamespace, 0); err != nil {
-		return err
-	}
-
-	if err := replaceMCOConfigmap(cs, pullspec); err != nil {
-		return err
-	}
-
-	components := map[string][]string{
-		"daemonset": {
-			"machine-config-server",
-			"machine-config-daemon",
-		},
-		"deployment": {
-			"machine-config-operator",
-			"machine-config-controller",
-			"machine-os-builder",
-		},
-	}
-
-	updated := false
-
-	daemonsetsUpdated, err := updateDaemonsets(cs, components["daemonset"], pullspec)
+func writeBuilderSecretToTempDir(cs *framework.ClientSet) (string, error) {
+	secrets, err := cs.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if daemonsetsUpdated {
-		updated = true
-	}
-
-	deploymentsUpdated, err := updateDeployments(cs, components["deployment"], pullspec)
+	tmpDir, err := os.MkdirTemp("", "")
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if deploymentsUpdated {
-		updated = true
-	}
-
-	if updated {
-		klog.Warningf("This update will trigger a MachineConfig update.")
-	}
-
-	return setDeploymentReplicas(cs, "machine-config-operator", ctrlcommon.MCONamespace, 1)
-}
-
-func updateDeployments(cs *framework.ClientSet, names []string, pullspec string) (bool, error) {
-	updated := false
-
-	for _, name := range names {
-		klog.Infof("Updating deployment/%s", name)
-		wasUpdated, err := updateDeployment(cs, name, pullspec)
-		if err != nil {
-			return false, err
-		}
-
-		if wasUpdated {
-			updated = true
+	var foundDockerCfg *corev1.Secret
+	names := []string{}
+	for _, secret := range secrets.Items {
+		secret := secret
+		names = append(names, secret.Name)
+		if strings.HasPrefix(secret.Name, "builder-dockercfg") {
+			foundDockerCfg = &secret
+			break
 		}
 	}
 
-	return updated, nil
+	if foundDockerCfg == nil {
+		return "", fmt.Errorf("did not find a matching secret, foundDockerCfg: %v", names)
+	}
+
+	converted, _, err := canonicalizePullSecretBytes(foundDockerCfg.Data[corev1.DockerConfigKey])
+	if err != nil {
+		return "", err
+	}
+
+	secretPath := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(secretPath, converted, 0o755); err != nil {
+		return "", err
+	}
+
+	klog.Infof("Secret %q has been written to %s", foundDockerCfg.Name, secretPath)
+
+	return secretPath, nil
 }
 
-func updateDaemonsets(cs *framework.ClientSet, names []string, pullspec string) (bool, error) {
-	updated := false
+func buildLocallyAndPushIntoCluster(cs *framework.ClientSet) error {
+	klog.Infof("Setting up")
+	gi, err := getGitInfo(hardcodedRepoRoot)
+	if err != nil {
+		return err
+	}
 
-	for _, name := range names {
-		klog.Infof("Updating daemonset/%s", name)
-		wasUpdated, err := updateDaemonset(cs, name, pullspec)
-		if err != nil {
-			return false, err
+	if err := setupRepo(gi); err != nil {
+		return err
+	}
+
+	if err := setupForPushIntoClusterAPI(cs); err != nil {
+		klog.Fatalln(err)
+	}
+	klog.Infof("Cluster is set up for direct pushes")
+
+	secretPath, err := writeBuilderSecretToTempDir(cs)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(filepath.Dir(secretPath))
+
+	clusterImgRegistryHostname := "image-registry-openshift-image-registry.apps.zzlotnik-ocp-amd64.devcluster.openshift.com"
+
+	opts := builders.Opts{
+		RepoRoot:       hardcodedRepoRoot,
+		FinalPullspec:  fmt.Sprintf("%s/%s/machine-config-operator:latest", clusterImgRegistryHostname, ctrlcommon.MCONamespace),
+		PushSecretPath: secretPath,
+		DockerfileName: dockerfileName,
+	}
+
+	builder := builders.NewDockerBuilder(opts)
+
+	if err := builder.Build(); err != nil {
+		return err
+	}
+
+	klog.Infof("Final image pullspec: %s", opts.FinalPullspec)
+
+	files := []string{
+		gi.dockerfilePath(),
+		gi.makefilePath(),
+	}
+
+	for _, file := range files {
+		if _, err := os.Stat(file); err != nil {
+			return err
 		}
-
-		if wasUpdated {
-			updated = true
-		}
 	}
 
-	return updated, nil
-}
-
-func loadMCOImagesConfigMap(cs *framework.ClientSet) (*corev1.ConfigMap, map[string]string, error) {
-	cmName := "machine-config-operator-images"
-	imagesJSONKey := "images.json"
-	imagesKey := "machineConfigOperator"
-
-	cm, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Get(context.TODO(), cmName, metav1.GetOptions{})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	_, ok := cm.Data[imagesJSONKey]
-	if !ok {
-		return nil, nil, fmt.Errorf("expected Configmap %s to have key %s, but was missing", cmName, imagesJSONKey)
-	}
-
-	images := map[string]string{}
-
-	if err := json.Unmarshal([]byte(cm.Data[imagesJSONKey]), &images); err != nil {
-		return nil, nil, err
-	}
-
-	if _, ok := images[imagesKey]; !ok {
-		return nil, nil, fmt.Errorf("expected %s in Configmap %s to have key %s, but was missing", imagesJSONKey, cmName, imagesKey)
-	}
-
-	return cm, images, nil
-}
-
-func replaceMCOConfigmap(cs *framework.ClientSet, pullspec string) error {
-	cmName := "machine-config-operator-images"
-	imagesJSONKey := "images.json"
-	imagesKey := "machineConfigOperator"
-
-	cm, images, err := loadMCOImagesConfigMap(cs)
-	if err != nil {
+	if err := teardownRepo(gi); err != nil {
 		return err
 	}
-
-	if images[imagesKey] == pullspec {
-		return nil
-	}
-
-	images[imagesKey] = pullspec
-
-	imagesBytes, err := json.Marshal(images)
-	if err != nil {
-		return err
-	}
-
-	cm.Data[imagesJSONKey] = string(imagesBytes)
-
-	replacementCM := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:   cm.Namespace,
-			Name:        cm.Name,
-			Annotations: cm.Annotations,
-			Labels:      cm.Labels,
-		},
-		Data: cm.Data,
-	}
-
-	if err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{}); err != nil {
-		return err
-	}
-
-	if _, err = cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Create(context.TODO(), replacementCM, metav1.CreateOptions{}); err != nil {
-		return err
-	}
-
-	klog.Infof("Set %s in %s in ConfigMap %s to %s", imagesKey, imagesJSONKey, cmName, pullspec)
 
 	return nil
 }
 
-func updateDeployment(cs *framework.ClientSet, name, pullspec string) (bool, error) {
-	updated := false
-	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		deploy, err := cs.AppsV1Interface.Deployments(ctrlcommon.MCONamespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if name == "machine-os-builder" && apierrs.IsNotFound(err) {
-			return nil
-		}
+// Converts a legacy Docker pull secret into a more modern representation.
+// Essentially, it converts {"registry.hostname.com": {"username": "user"...}}
+// into {"auths": {"registry.hostname.com": {"username": "user"...}}}. If it
+// encounters a pull secret already in this configuration, it will return the
+// input secret as-is. Returns either the supplied data or the newly-configured
+// representation of said data, a boolean to indicate whether it was converted,
+// and any errors resulting from the conversion process.
+func canonicalizePullSecretBytes(secretBytes []byte) ([]byte, bool, error) {
+	type newStyleAuth struct {
+		Auths map[string]interface{} `json:"auths,omitempty"`
+	}
 
-		if err != nil {
-			return err
-		}
+	// Try marshaling the new-style secret first:
+	newStyleDecoded := &newStyleAuth{}
+	if err := json.Unmarshal(secretBytes, newStyleDecoded); err != nil {
+		return nil, false, fmt.Errorf("could not decode new-style pull secret: %w", err)
+	}
 
-		if !containersNeedUpdated(name, pullspec, deploy.Spec.Template.Spec.Containers) {
-			klog.Infof("Container pullspec did not change from %s, restarting deployment/%s to pull the latest image", pullspec, name)
-			return restartWithOC("deployment", name)
-		}
+	// We have an new-style secret, so we can just return here.
+	if len(newStyleDecoded.Auths) != 0 {
+		return secretBytes, false, nil
+	}
 
-		_, err = cs.AppsV1Interface.Deployments(ctrlcommon.MCONamespace).Update(context.TODO(), deploy, metav1.UpdateOptions{})
-		updated = true
-		return err
+	// We need to convert the legacy-style secret to the new-style.
+	oldStyleDecoded := map[string]interface{}{}
+	if err := json.Unmarshal(secretBytes, &oldStyleDecoded); err != nil {
+		return nil, false, fmt.Errorf("could not decode legacy-style pull secret: %w", err)
+	}
+
+	extHostname := "image-registry-openshift-image-registry.apps.zzlotnik-ocp-amd64.devcluster.openshift.com"
+	oldStyleDecoded[extHostname] = oldStyleDecoded["image-registry.openshift-image-registry.svc:5000"]
+
+	out, err := json.Marshal(&newStyleAuth{
+		Auths: oldStyleDecoded,
 	})
 
-	return updated, err
+	return out, err == nil, err
 }
 
-func restartWithOC(kind, name string) error {
-	resource := fmt.Sprintf("%s/%s", kind, name)
-	cmd := exec.Command("oc", "rollout", "restart", "--namespace", ctrlcommon.MCONamespace, resource)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		klog.Infof("Restarted %s", resource)
-		return err
+func main() {
+	if err := buildLocallyAndPushIntoCluster(framework.NewClientSet("")); err != nil {
+		klog.Fatalln(err)
 	}
-
-	_, err = os.Stderr.Write(out)
-	return err
-}
-
-func updateDaemonset(cs *framework.ClientSet, name, pullspec string) (bool, error) {
-	updated := false
-
-	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		ds, err := cs.AppsV1Interface.DaemonSets(ctrlcommon.MCONamespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		if !containersNeedUpdated(name, pullspec, ds.Spec.Template.Spec.Containers) {
-			klog.Infof("Container pullspec did not change from %s, restarting daemonset/%s to pull the latest image", pullspec, name)
-			return restartWithOC("daemonset", name)
-		}
-
-		ds.Spec.Template.Spec.Containers = updateContainers(name, pullspec, ds.Spec.Template.Spec.Containers)
-
-		_, err = cs.AppsV1Interface.DaemonSets(ctrlcommon.MCONamespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
-		updated = true
-
-		return err
-	})
-
-	return updated, err
-}
-
-func containersNeedUpdated(name, pullspec string, containers []corev1.Container) bool {
-	for _, container := range containers {
-		if container.Name == name {
-			return container.Image != pullspec
-		}
-	}
-
-	return false
-}
-
-func updateContainers(name, pullspec string, containers []corev1.Container) []corev1.Container {
-	out := []corev1.Container{}
-
-	for _, container := range containers {
-		if container.Name == name {
-			container.Image = pullspec
-			container.ImagePullPolicy = corev1.PullAlways
-		}
-
-		out = append(out, container)
-	}
-
-	return out
 }
 
 func setDeploymentReplicas(cs *framework.ClientSet, deploymentName, namespace string, replicas int32) error {
@@ -401,10 +328,4 @@ func setDeploymentReplicas(cs *framework.ClientSet, deploymentName, namespace st
 
 	_, err = cs.AppsV1Interface.Deployments(namespace).UpdateScale(context.TODO(), deploymentName, scale, metav1.UpdateOptions{})
 	return err
-}
-
-func main() {
-	if err := rollout(framework.NewClientSet(""), "quay.io/zzlotnik/machine-config-operator:latest"); err != nil {
-		klog.Fatalln(err)
-	}
 }

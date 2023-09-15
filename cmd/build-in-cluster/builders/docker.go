@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/errors"
 	"k8s.io/klog"
 )
 
@@ -19,16 +20,22 @@ func NewDockerBuilder(opts Opts) DockerBuilder {
 }
 
 func (d *DockerBuilder) Build() error {
-	if err := makeBinaries(d.opts.RepoRoot); err != nil {
+	// if err := makeBinaries(d.opts.RepoRoot); err != nil {
+	// 	return err
+	// }
+
+	// if err := d.buildContainer(); err != nil {
+	// 	return fmt.Errorf("unable to build container: %w", err)
+	// }
+
+	klog.Infof("Container built, beginnning push")
+
+	if err := d.pushContainer(); err == nil {
+		return nil
+	}
+
+	if err := d.pushContainerWithSkopeo(); err != nil {
 		return err
-	}
-
-	if err := d.buildContainer(); err != nil {
-		return fmt.Errorf("unable to build container: %w", err)
-	}
-
-	if err := d.pushContainer(); err != nil {
-		return fmt.Errorf("unable to push container: %w", err)
 	}
 
 	return nil
@@ -61,6 +68,48 @@ func (d *DockerBuilder) buildContainer() error {
 	return cmd.Run()
 }
 
+func (d *DockerBuilder) pushContainerWithSkopeo() error {
+	klog.Infof("Falling back to Skopeo for image push")
+
+	localPullspec := "localhost/machine-config-operator:latest"
+
+	cmd := exec.Command("docker", "tag", d.opts.FinalPullspec, localPullspec)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.NewExecError(cmd, out, err)
+	}
+
+	// tokBytes, err := os.ReadFile("/Users/zzlotnik/go/src/github.com/cheesesashimi/zacks-openshift-helpers/cmd/build-in-cluster/builder-token.txt")
+	// if err != nil {
+	// 	return err
+	// }
+
+	opts := []string{
+		//"--dest-creds",
+		//fmt.Sprintf("unused:%s", string(tokBytes)),
+		//d.opts.PushSecretPath,
+		"--dest-authfile",
+		d.opts.PushSecretPath,
+		fmt.Sprintf("docker-daemon:%s", localPullspec),
+		fmt.Sprintf("docker://%s", d.opts.FinalPullspec),
+	}
+
+	if strings.Contains(d.opts.FinalPullspec, "image-registry-openshift-image-registry") {
+		opts = append([]string{"copy", "--dest-tls-verify=false"}, opts...)
+	} else {
+		opts = append([]string{"copy"}, opts...)
+	}
+
+	cmd = exec.Command("skopeo", opts...)
+	klog.Infof("Running $ %s", cmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return errors.NewExecErrorNoOutput(cmd, err)
+	}
+
+	return nil
+}
+
 func (d *DockerBuilder) pushContainer() error {
 	// Docker needs the directory containing the push secret path (and expects it
 	// to be in a file called "config.json"), instead of the full path to it.
@@ -74,7 +123,8 @@ func (d *DockerBuilder) pushContainer() error {
 		}
 	}()
 
-	cmd := exec.Command("docker", "--config", pushSecretDir, "push", d.opts.FinalPullspec)
+	opts := []string{"--tlscacert", filepath.Join(pushSecretDir, "service-ca.crt"), "--config", pushSecretDir, "push", d.opts.FinalPullspec}
+	cmd := exec.Command("docker", opts...)
 	cmd.Dir = d.opts.RepoRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

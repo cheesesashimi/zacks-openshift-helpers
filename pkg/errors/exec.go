@@ -16,7 +16,19 @@ func (e *ExecError) Unwrap() error {
 }
 
 func (e *ExecError) Error() string {
-	return fmt.Sprintf("unable to run %s, output %s, error: %s", e.command, string(e.output), e.err)
+	if e.output != nil {
+		return fmt.Sprintf("unable to run %s, output %s, error: %s", e.command, string(e.output), e.err)
+	}
+
+	return fmt.Sprintf("unable to run %s, error: %s", e.command, e.err)
+}
+
+func NewExecErrorWithOutput(cmd *exec.Cmd, output []byte, err error) error {
+	return NewExecError(cmd, output, err)
+}
+
+func NewExecErrorNoOutput(cmd *exec.Cmd, err error) error {
+	return NewExecError(cmd, nil, err)
 }
 
 func NewExecError(cmd *exec.Cmd, output []byte, err error) error {
