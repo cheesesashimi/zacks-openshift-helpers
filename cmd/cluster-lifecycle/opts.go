@@ -24,9 +24,10 @@ type inputOpts struct {
 	releaseKind             string
 	releaseStream           string
 	sshKeyPath              string
-	username                string
+	prefix                  string
 	workDir                 string
 	writeLogFile            bool
+	variant                 string
 }
 
 func (i *inputOpts) appendWorkDir(path string) string {
@@ -81,16 +82,16 @@ func (i *inputOpts) validateForSetup() error {
 
 	klog.Infof("Pull secret path: %s", i.pullSecretPath)
 
-	if i.username == defaultUser {
+	if i.prefix == defaultUser {
 		u, err := user.Current()
 		if err != nil {
 			return err
 		}
 
-		i.username = u.Username
+		i.prefix = u.Username
 	}
 
-	klog.Infof("Username: %s", i.username)
+	klog.Infof("Using prefix: %s", i.prefix)
 
 	if i.releaseKind == "okd-scos" && !strings.Contains(i.releaseStream, "scos") {
 		return fmt.Errorf("invalid release stream %q for kind okd-scos", i.releaseStream)
@@ -112,7 +113,7 @@ func (i *inputOpts) toInstallConfigOpts() installconfig.Opts {
 		Kind:           i.releaseKind,
 		PullSecretPath: i.pullSecretPath,
 		SSHKeyPath:     i.sshKeyPath,
-		Username:       i.username,
+		Prefix:         i.prefix,
 	}
 }
 

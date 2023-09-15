@@ -27,13 +27,14 @@ func init() {
 	rootCmd.AddCommand(setupCmd)
 	setupCmd.PersistentFlags().StringVar(&setupOpts.postInstallManifestPath, "post-install-manifests", "", "Directory containing K8s manifests to apply after successful installation.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", defaultPullSecretPath, "Path to a pull secret that can pull from registry.ci.openshift.org")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseArch, "release-arch", "amd64", fmt.Sprintf("Release arch, one of: %v", releaseArches))
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseKind, "release-kind", "ocp", fmt.Sprintf("Release kind, one of: %v", releaseKinds))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseArch, "release-arch", "amd64", fmt.Sprintf("Release arch, one of: %v", installconfig.GetSupportedArches().List()))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseKind, "release-kind", "ocp", fmt.Sprintf("Release kind, one of: %v", installconfig.GetSupportedKinds().List()))
 	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseStream, "release-stream", "4.14.0-0.ci", "The release stream to use")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.sshKeyPath, "ssh-key-path", defaultSSHKeyPath, "Path to an SSH key to embed in the installation config.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.username, "username", "$USER", "The username to prepend to the cluster name; will use current system user if not set.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.prefix, "prefix", "$USER", "Prefix to add to the cluster name; will use current system user if not set.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.workDir, "work-dir", defaultWorkDir, "The directory to use for running openshift-install. Enables vacation and persistent install mode when used in a cron job.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
+	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", installconfig.GetSupportedVariants().List()))
 }
 
 func runSetupCmd(_ *cobra.Command, _ []string) {
@@ -56,12 +57,8 @@ func runSetup() error {
 		return fmt.Errorf("could not set up workdir: %w", err)
 	}
 
-	if isInVacationMode(setupOpts) {
-		return nil
-	}
-
 	vacationFile := setupOpts.vacationFilePath()
-	if inVacationMode, err := isFileExists(vacationFile); inVacationMode {
+	if inVacationMode, err := isInVacationMode(setupOpts); inVacationMode {
 		klog.Infof("%s detected, in vacation mode.", vacationFile)
 		return nil
 	} else if err != nil {
@@ -203,12 +200,12 @@ func getReleaseFromFile(opts inputOpts) (string, error) {
 	return release, nil
 }
 
-func isInVacationMode(opts inputOpts) bool {
+func isInVacationMode(opts inputOpts) (bool, error) {
 	vacationFile := opts.vacationFilePath()
 	inVacationMode, err := isFileExists(vacationFile)
 	if err != nil {
-		klog.Fatalln(fmt.Errorf("could not read %s: %w", vacationFile, err))
+		return false, fmt.Errorf("could not read %s: %w", vacationFile, err)
 	}
 
-	return inVacationMode
+	return inVacationMode, nil
 }

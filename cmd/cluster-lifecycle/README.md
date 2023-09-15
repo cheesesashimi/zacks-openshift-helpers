@@ -12,7 +12,7 @@ This is a simple program intended to help bring up sandbox OpenShift clusters. I
     set -xeuo
 
     cluster-lifecycle setup \
-            --username "your-username" \
+            --prefix "your-username" \
             --release-arch "amd64" \
             --release-stream "4.14.0-0.ci" \
             --ssh-key-path "/path/to/your/public/ssh/keys" \
@@ -43,7 +43,7 @@ This is a simple program intended to help bring up sandbox OpenShift clusters. I
     ```
 3. Using this information, it reaches out to the appropriate release controller to get the latest release for the given release stream.
 4. It downloads and extracts the appropriate `openshift-install` binary from the given release.
-5. It writes a simple `install-config.yaml` to the working directory, using the provided username, cluster kind, and cluster arch to generate the name, e.g.: `zzlotnik-ocp-amd64`.
+5. It writes a simple `install-config.yaml` to the working directory, using the provided prefix, cluster kind, and cluster arch to generate the name, e.g.: `zzlotnik-ocp-amd64`.
 6. It calls `openshift-install` within the working directory to bring up the cluster.
 
 ## Additional Features

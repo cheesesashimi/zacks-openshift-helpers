@@ -28,6 +28,14 @@ const (
 	singleNode string = "single-node"
 )
 
+func GetSupportedKinds() sets.String {
+	return sets.StringKeySet(GetSupportedArchesAndKinds())
+}
+
+func GetSupportedArches() sets.String {
+	return sets.NewString(amd64, arm64, multi)
+}
+
 func GetSupportedArchesAndKinds() map[string]map[string]struct{} {
 	return map[string]map[string]struct{}{
 		ocp: {
