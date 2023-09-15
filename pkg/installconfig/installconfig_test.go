@@ -29,6 +29,12 @@ func TestRenderInstallConfig(t *testing.T) {
 		},
 		{
 			opts: Opts{
+				Arch: aarch64,
+				Kind: ocp,
+			},
+		},
+		{
+			opts: Opts{
 				Arch: multi,
 				Kind: ocp,
 			},
@@ -130,7 +136,13 @@ func TestRenderInstallConfig(t *testing.T) {
 				assert.Contains(t, string(out), fmt.Sprintf("cluster-name-prefix-%s-%s", testCase.opts.Kind, testCase.opts.Arch))
 				assert.Contains(t, string(out), "replicas: 3")
 			}
-			t.Logf(string(out))
+
+			if testCase.opts.Arch == aarch64 {
+				assert.Contains(t, string(out), "aarch64")
+				assert.Contains(t, string(out), "architecture: arm64")
+			} else if testCase.opts.Arch != multi {
+				assert.Contains(t, string(out), "architecture: "+testCase.opts.Arch)
+			}
 		})
 	}
 }

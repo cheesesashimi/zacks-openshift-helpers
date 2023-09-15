@@ -11,9 +11,10 @@ import (
 
 // Architectures
 const (
-	arm64 string = "arm64"
-	amd64 string = "amd64"
-	multi string = "multi"
+	aarch64 string = "aarch64"
+	arm64   string = "arm64"
+	amd64   string = "amd64"
+	multi   string = "multi"
 )
 
 // Kinds
@@ -28,20 +29,21 @@ const (
 	singleNode string = "single-node"
 )
 
-func GetSupportedKinds() sets.String {
-	return sets.StringKeySet(GetSupportedArchesAndKinds())
+func GetSupportedKinds() sets.Set[string] {
+	return sets.KeySet(GetSupportedArchesAndKinds())
 }
 
-func GetSupportedArches() sets.String {
-	return sets.NewString(amd64, arm64, multi)
+func GetSupportedArches() sets.Set[string] {
+	return sets.New[string]([]string{amd64, arm64, multi}...)
 }
 
 func GetSupportedArchesAndKinds() map[string]map[string]struct{} {
 	return map[string]map[string]struct{}{
 		ocp: {
-			amd64: {},
-			arm64: {},
-			multi: {},
+			amd64:   {},
+			aarch64: {},
+			arm64:   {},
+			multi:   {},
 		},
 		okd: {
 			amd64: struct{}{},
@@ -66,8 +68,8 @@ func IsValidKindAndArch(kind, arch string) (bool, error) {
 	return true, nil
 }
 
-func GetSupportedVariants() sets.String {
-	return sets.NewString(singleNode)
+func GetSupportedVariants() sets.Set[string] {
+	return sets.New[string](singleNode)
 }
 
 func IsSupportedVariant(variant string) (bool, error) {
@@ -76,7 +78,7 @@ func IsSupportedVariant(variant string) (bool, error) {
 		return true, nil
 	}
 
-	return false, fmt.Errorf("invalid variant %q, valid variant(s): %v", variant, vars.List())
+	return false, fmt.Errorf("invalid variant %q, valid variant(s): %v", variant, sets.List(vars))
 }
 
 //go:embed single-node-install-config-amd64.yaml
@@ -118,7 +120,7 @@ func (o *Opts) validateVariant() error {
 		return err
 	}
 
-	supportedSNOArches := sets.NewString("amd64", "arm64")
+	supportedSNOArches := sets.NewString(amd64, arm64, aarch64)
 
 	if o.Variant == "single-node" && !supportedSNOArches.Has(o.Arch) {
 		return fmt.Errorf("arch %q is unsupported by single-node variant", o.Arch)
@@ -171,8 +173,9 @@ func (o *Opts) validate() error {
 
 func (o *Opts) getSingleNodeConfig() []byte {
 	snoConfigs := map[string][]byte{
-		amd64: singleNodeInstallConfigAMD64,
-		arm64: singleNodeInstallConfigARM64,
+		aarch64: singleNodeInstallConfigARM64,
+		amd64:   singleNodeInstallConfigAMD64,
+		arm64:   singleNodeInstallConfigARM64,
 	}
 
 	return snoConfigs[o.Arch]
@@ -180,8 +183,10 @@ func (o *Opts) getSingleNodeConfig() []byte {
 
 func (o *Opts) getBaseConfig() []byte {
 	baseConfigs := map[string][]byte{
-		amd64: baseInstallConfigAMD64,
-		arm64: baseInstallConfigARM64,
+		aarch64: baseInstallConfigARM64,
+		amd64:   baseInstallConfigAMD64,
+		arm64:   baseInstallConfigARM64,
+		// Multiarch starts with an AMD64 or ARM64, but we default to AMD64 here.
 		multi: baseInstallConfigAMD64,
 	}
 
