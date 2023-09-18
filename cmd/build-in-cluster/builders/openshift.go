@@ -21,12 +21,11 @@ const (
 )
 
 type OpenshiftBuilderOpts struct {
-	ImageStreamName     string
-	ImageStreamPullspec string
-	Dockerfile          string
-	BranchName          string
-	RemoteURL           string
-	FollowBuild         bool
+	ImageStreamName string
+	Dockerfile      string
+	BranchName      string
+	RemoteURL       string
+	FollowBuild     bool
 }
 
 type OpenshiftBuilder struct {
@@ -42,7 +41,12 @@ func NewOpenshiftBuilder(cs *framework.ClientSet, opts OpenshiftBuilderOpts) *Op
 }
 
 func (o *OpenshiftBuilder) Build() error {
-	_, err := o.cs.BuildV1Interface.Builds(ctrlcommon.MCONamespace).Create(context.TODO(), o.prepareBuild(), metav1.CreateOptions{})
+	_, err := o.cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).Get(context.TODO(), o.opts.ImageStreamName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	_, err = o.cs.BuildV1Interface.Builds(ctrlcommon.MCONamespace).Create(context.TODO(), o.prepareBuild(), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("could not create build: %w", err)
 	}
@@ -58,6 +62,10 @@ func (o *OpenshiftBuilder) Build() error {
 
 	return nil
 }
+
+func (o *OpenshiftBuilder) Push() error { return nil }
+
+func (o *OpenshiftBuilder) PushWithSkopeo() error { return nil }
 
 func (o *OpenshiftBuilder) waitForBuildToComplete() error {
 	name := fmt.Sprintf("build/%s", buildName)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/errors"
 	"k8s.io/klog"
 )
 
@@ -25,8 +26,30 @@ func (p *PodmanBuilder) Build() error {
 		return fmt.Errorf("unable to build container: %w", err)
 	}
 
+	return nil
+}
+
+func (p *PodmanBuilder) Push() error {
+	if err := p.tagContainerForPush(); err != nil {
+		return fmt.Errorf("could not tag container: %w", err)
+	}
+
 	if err := p.pushContainer(); err != nil {
-		return fmt.Errorf("unable to push container: %w", err)
+		klog.Info("Push failed, falling back to Skopeo")
+		return p.PushWithSkopeo()
+	}
+
+	return nil
+}
+
+func (p *PodmanBuilder) PushWithSkopeo() error {
+	return pushWithSkopeo(p.opts, builderTypePodman)
+}
+
+func (p *PodmanBuilder) tagContainerForPush() error {
+	cmd := exec.Command("podman", "tag", localPullspec, p.opts.FinalPullspec)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.NewExecError(cmd, out, err)
 	}
 
 	return nil
