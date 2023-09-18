@@ -5,6 +5,7 @@ run:
   skip-files:
     - ".*_test\\.go"
     - "lib/.*"
+    - "cmd/build-in-cluster/*"
 linters:
   disable-all: true
   enable:
