@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
 	buildv1 "github.com/openshift/api/build/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	corev1 "k8s.io/api/core/v1"
@@ -28,19 +29,19 @@ type OpenshiftBuilderOpts struct {
 	FollowBuild     bool
 }
 
-type OpenshiftBuilder struct {
+type openshiftBuilder struct {
 	opts OpenshiftBuilderOpts
 	cs   *framework.ClientSet
 }
 
-func NewOpenshiftBuilder(cs *framework.ClientSet, opts OpenshiftBuilderOpts) *OpenshiftBuilder {
-	return &OpenshiftBuilder{
+func NewOpenshiftBuilder(cs *framework.ClientSet, opts OpenshiftBuilderOpts) Builder {
+	return &openshiftBuilder{
 		opts: opts,
 		cs:   cs,
 	}
 }
 
-func (o *OpenshiftBuilder) Build() error {
+func (o *openshiftBuilder) Build() error {
 	_, err := o.cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).Get(context.TODO(), o.opts.ImageStreamName, metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -58,18 +59,27 @@ func (o *OpenshiftBuilder) Build() error {
 	}
 
 	klog.Infof("Build %s completed. Cleaning up build object...", buildName)
-	err = o.cs.BuildV1Interface.Builds(ctrlcommon.MCONamespace).Delete(context.TODO(), buildName, metav1.DeleteOptions{})
-
-	return nil
+	return o.cs.BuildV1Interface.Builds(ctrlcommon.MCONamespace).Delete(context.TODO(), buildName, metav1.DeleteOptions{})
 }
 
-func (o *OpenshiftBuilder) Push() error { return nil }
+func (o *openshiftBuilder) Push() error {
+	is, err := o.cs.ImageStreams(ctrlcommon.MCONamespace).Get(context.TODO(), o.opts.ImageStreamName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
 
-func (o *OpenshiftBuilder) PushWithSkopeo() error { return nil }
+	return rollout.ReplaceMCOImage(o.cs, fmt.Sprintf(is.Status.DockerImageRepository+":latest"))
+}
 
-func (o *OpenshiftBuilder) waitForBuildToComplete() error {
+func (o *openshiftBuilder) waitForBuildToComplete() error {
+	kubeconfig, err := o.cs.GetKubeconfig()
+	if err != nil {
+		return err
+	}
+
 	name := fmt.Sprintf("build/%s", buildName)
 	cmd := exec.Command("oc", "logs", "-f", name, "-n", ctrlcommon.MCONamespace)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfig))
 
 	if o.opts.FollowBuild {
 		klog.Infof("Streaming build logs...")
@@ -107,7 +117,7 @@ func (o *OpenshiftBuilder) waitForBuildToComplete() error {
 	return fmt.Errorf("build is in phase %s: %w", b.Status.Phase, cmdErr)
 }
 
-func (o *OpenshiftBuilder) prepareBuild() *buildv1.Build {
+func (o *openshiftBuilder) prepareBuild() *buildv1.Build {
 	skipLayers := buildv1.ImageOptimizationSkipLayers
 
 	return &buildv1.Build{

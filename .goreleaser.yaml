@@ -4,6 +4,15 @@ before:
     - go mod tidy
     - go test -count=1 -v ./...
 builds:
+  - main: ./cmd/mco-builder
+    id: "mco-builder"
+    binary: mco-builder
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
   - main: ./cmd/mco-push
     id: "mco-push"
     binary: mco-push

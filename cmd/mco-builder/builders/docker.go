@@ -11,15 +11,15 @@ import (
 	"k8s.io/klog"
 )
 
-type DockerBuilder struct {
+type dockerBuilder struct {
 	opts Opts
 }
 
-func NewDockerBuilder(opts Opts) DockerBuilder {
-	return DockerBuilder{opts: opts}
+func newDockerBuilder(opts Opts) Builder {
+	return &dockerBuilder{opts: opts}
 }
 
-func (d *DockerBuilder) Build() error {
+func (d *dockerBuilder) Build() error {
 	if err := makeBinaries(d.opts.RepoRoot); err != nil {
 		return err
 	}
@@ -31,24 +31,25 @@ func (d *DockerBuilder) Build() error {
 	return nil
 }
 
-func (d *DockerBuilder) Push() error {
+func (d *dockerBuilder) Push() error {
+	// We need more control than Docker can provide for direct cluster pushes, so
+	// we use skopeo for this instead.
+	if d.opts.isDirectClusterPush() {
+		return pushWithSkopeo(d.opts, BuilderTypeDocker)
+	}
+
 	if err := d.tagContainerForPush(); err != nil {
 		return fmt.Errorf("could not tag container: %w", err)
 	}
 
 	if err := d.pushContainer(); err != nil {
-		klog.Infof("Push failed, falling back to Skopeo")
-		return d.PushWithSkopeo()
+		return fmt.Errorf("could not push container: %w", err)
 	}
 
 	return nil
 }
 
-func (d *DockerBuilder) PushWithSkopeo() error {
-	return pushWithSkopeo(d.opts, builderTypeDocker)
-}
-
-func (d *DockerBuilder) buildContainer() error {
+func (d *dockerBuilder) buildContainer() error {
 	dockerOpts := []string{"build", "-t", localPullspec, "--file", d.opts.DockerfileName, "."}
 
 	if d.opts.PullSecretPath != "" {
@@ -74,7 +75,7 @@ func (d *DockerBuilder) buildContainer() error {
 	return cmd.Run()
 }
 
-func (d *DockerBuilder) tagContainerForPush() error {
+func (d *dockerBuilder) tagContainerForPush() error {
 	cmd := exec.Command("docker", "tag", localPullspec, d.opts.FinalPullspec)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.NewExecError(cmd, out, err)
@@ -83,7 +84,7 @@ func (d *DockerBuilder) tagContainerForPush() error {
 	return nil
 }
 
-func (d *DockerBuilder) pushContainer() error {
+func (d *dockerBuilder) pushContainer() error {
 	// Docker needs the directory containing the push secret path (and expects it
 	// to be in a file called "config.json"), instead of the full path to it.
 	pushSecretDir, cleanupFunc, err := d.getConfigDir(d.opts.PushSecretPath)
@@ -109,7 +110,7 @@ func (d *DockerBuilder) pushContainer() error {
 // Docker needs the directory that a secret exists in, not the full path to the
 // secret itself. Additionally, the secret must have the name "config.json".
 // This works around that.
-func (d *DockerBuilder) getConfigDir(secretPath string) (string, func() error, error) {
+func (d *dockerBuilder) getConfigDir(secretPath string) (string, func() error, error) {
 	// If we have a "config.json" in this directory, just return the directory
 	// path.
 	if strings.HasSuffix(secretPath, "/config.json") {

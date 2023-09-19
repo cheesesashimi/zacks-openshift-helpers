@@ -9,15 +9,15 @@ import (
 	"k8s.io/klog"
 )
 
-type PodmanBuilder struct {
+type podmanBuilder struct {
 	opts Opts
 }
 
-func NewPodmanBuilder(opts Opts) PodmanBuilder {
-	return PodmanBuilder{opts: opts}
+func newPodmanBuilder(opts Opts) Builder {
+	return &podmanBuilder{opts: opts}
 }
 
-func (p *PodmanBuilder) Build() error {
+func (p *podmanBuilder) Build() error {
 	if err := makeBinaries(p.opts.RepoRoot); err != nil {
 		return err
 	}
@@ -29,24 +29,20 @@ func (p *PodmanBuilder) Build() error {
 	return nil
 }
 
-func (p *PodmanBuilder) Push() error {
+func (p *podmanBuilder) Push() error {
 	if err := p.tagContainerForPush(); err != nil {
 		return fmt.Errorf("could not tag container: %w", err)
 	}
 
 	if err := p.pushContainer(); err != nil {
 		klog.Info("Push failed, falling back to Skopeo")
-		return p.PushWithSkopeo()
+		return pushWithSkopeo(p.opts, BuilderTypePodman)
 	}
 
 	return nil
 }
 
-func (p *PodmanBuilder) PushWithSkopeo() error {
-	return pushWithSkopeo(p.opts, builderTypePodman)
-}
-
-func (p *PodmanBuilder) tagContainerForPush() error {
+func (p *podmanBuilder) tagContainerForPush() error {
 	cmd := exec.Command("podman", "tag", localPullspec, p.opts.FinalPullspec)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.NewExecError(cmd, out, err)
@@ -55,8 +51,8 @@ func (p *PodmanBuilder) tagContainerForPush() error {
 	return nil
 }
 
-func (p *PodmanBuilder) buildContainer() error {
-	podmanOpts := []string{"build", "-t", p.opts.FinalPullspec, "--file", p.opts.DockerfileName, "."}
+func (p *podmanBuilder) buildContainer() error {
+	podmanOpts := []string{"build", "-t", localPullspec, "--file", p.opts.DockerfileName, "."}
 	if p.opts.PullSecretPath != "" {
 		podmanOpts = append([]string{"--authfile", p.opts.PullSecretPath}, podmanOpts...)
 	}
@@ -70,8 +66,15 @@ func (p *PodmanBuilder) buildContainer() error {
 	return cmd.Run()
 }
 
-func (p *PodmanBuilder) pushContainer() error {
-	cmd := exec.Command("podman", "--authfile", p.opts.PushSecretPath, "push", p.opts.FinalPullspec)
+func (p *podmanBuilder) pushContainer() error {
+	podmanPushOpts := []string{"--authfile", p.opts.PushSecretPath, p.opts.FinalPullspec}
+	if p.opts.isDirectClusterPush() {
+		podmanPushOpts = append([]string{"--tls-verify=false"}, podmanPushOpts...)
+	}
+
+	podmanPushOpts = append([]string{"push"}, podmanPushOpts...)
+
+	cmd := exec.Command("podman", podmanPushOpts...)
 	cmd.Dir = p.opts.RepoRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

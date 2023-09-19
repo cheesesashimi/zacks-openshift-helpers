@@ -1,0 +1,44 @@
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
+	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
+	"github.com/openshift/machine-config-operator/test/framework"
+	"github.com/spf13/cobra"
+	apierrs "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+var (
+	revertCmd = &cobra.Command{
+		Use:   "revert",
+		Short: "Reverts the changes to the sandbox cluster to use a custom MCO image.",
+		Long:  "",
+		RunE:  doRevert,
+	}
+)
+
+func init() {
+	rootCmd.AddCommand(revertCmd)
+}
+
+func doRevert(_ *cobra.Command, _ []string) error {
+	cs := framework.NewClientSet("")
+
+	if err := cs.ImageStreams(ctrlcommon.MCONamespace).Delete(context.TODO(), imagestreamName, metav1.DeleteOptions{}); err != nil && !apierrs.IsNotFound(err) {
+		return fmt.Errorf("could not remove imagestream %s: %w", imagestreamName, err)
+	}
+
+	if err := rollout.RevertToOriginalMCOImage(cs); err != nil {
+		return fmt.Errorf("could not revert to original MCO image: %w", err)
+	}
+
+	if err := rollout.UnexposeClusterImageRegistry(cs); err != nil {
+		return fmt.Errorf("could not unexpose cluster image registry: %w", err)
+	}
+
+	return nil
+}

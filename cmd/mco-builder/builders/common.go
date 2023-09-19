@@ -5,23 +5,31 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"runtime"
 	"strings"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 )
 
-type builderType string
+type BuilderType string
 
 const (
-	builderTypePodman    builderType = "podman"
-	builderTypeDocker    builderType = "docker"
-	builderTypeOpenshift builderType = "openshift"
+	BuilderTypePodman    BuilderType = "podman"
+	BuilderTypeDocker    BuilderType = "docker"
+	BuilderTypeOpenshift BuilderType = "openshift"
+	BuilderTypeUnknown   BuilderType = "unknown-builder-type"
 )
 
 const (
 	localPullspec string = "localhost/machine-config-operator:latest"
 )
+
+type Builder interface {
+	Build() error
+	Push() error
+}
 
 type Opts struct {
 	RepoRoot       string
@@ -29,6 +37,38 @@ type Opts struct {
 	PushSecretPath string
 	FinalPullspec  string
 	DockerfileName string
+}
+
+func (o *Opts) isDirectClusterPush() bool {
+	return strings.Contains(o.FinalPullspec, "image-registry-openshift-image-registry")
+}
+
+func NewLocalBuilder(opts Opts, bt BuilderType) Builder {
+	if bt == BuilderTypePodman {
+		return newPodmanBuilder(opts)
+	}
+
+	return newDockerBuilder(opts)
+}
+
+func GetBuilderTypes() sets.Set[BuilderType] {
+	return GetLocalBuilderTypes().Insert(BuilderTypeOpenshift)
+}
+
+func GetLocalBuilderTypes() sets.Set[BuilderType] {
+	return sets.New[BuilderType](BuilderTypePodman, BuilderTypeDocker)
+}
+
+func GetDefaultBuilderTypeForPlatform() BuilderType {
+	if runtime.GOOS == "linux" {
+		return BuilderTypePodman
+	}
+
+	if runtime.GOOS == "darwin" {
+		return BuilderTypeDocker
+	}
+
+	return BuilderTypeUnknown
 }
 
 func makeBinaries(repoRoot string) error {
@@ -66,10 +106,10 @@ func toEnvVars(in map[string]string) []string {
 	return out
 }
 
-func pushWithSkopeo(opts Opts, builder builderType) error {
-	imgStorageMap := map[builderType]string{
-		builderTypePodman: "containers-storage",
-		builderTypeDocker: "docker-daemon",
+func pushWithSkopeo(opts Opts, builder BuilderType) error {
+	imgStorageMap := map[BuilderType]string{
+		BuilderTypePodman: "containers-storage",
+		BuilderTypeDocker: "docker-daemon",
 	}
 
 	imgStorage, ok := imgStorageMap[builder]
@@ -84,7 +124,7 @@ func pushWithSkopeo(opts Opts, builder builderType) error {
 		fmt.Sprintf("docker://%s", opts.FinalPullspec),
 	}
 
-	if strings.Contains(opts.FinalPullspec, "image-registry-openshift-image-registry") {
+	if opts.isDirectClusterPush() {
 		skopeoOpts = append([]string{"copy", "--dest-tls-verify=false"}, skopeoOpts...)
 	} else {
 		skopeoOpts = append([]string{"copy"}, skopeoOpts...)
