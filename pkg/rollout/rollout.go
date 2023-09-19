@@ -250,6 +250,7 @@ func updateDeployment(cs *framework.ClientSet, name, pullspec string) (bool, err
 
 		if containersNeedUpdated(name, pullspec, deploy.Spec.Template.Spec.Containers) {
 			deploy.Spec.Template.Spec.Containers = updateContainers(name, pullspec, deploy.Spec.Template.Spec.Containers)
+			updated = true
 		} else {
 			// Cribbed from: https://github.com/kubernetes/kubectl/blob/master/pkg/polymorphichelpers/objectrestarter.go#L32-L119 and https://github.com/derailed/k9s/blob/master/internal/dao/dp.go#L68-L114
 			klog.Infof("Container pullspec did not change from %s, restarting deployment/%s to pull the latest image", pullspec, name)
@@ -257,7 +258,7 @@ func updateDeployment(cs *framework.ClientSet, name, pullspec string) (bool, err
 		}
 
 		_, err = cs.AppsV1Interface.Deployments(ctrlcommon.MCONamespace).Update(context.TODO(), deploy, metav1.UpdateOptions{})
-		updated = true
+
 		return err
 	})
 
@@ -275,6 +276,7 @@ func updateDaemonset(cs *framework.ClientSet, name, pullspec string) (bool, erro
 
 		if containersNeedUpdated(name, pullspec, ds.Spec.Template.Spec.Containers) {
 			ds.Spec.Template.Spec.Containers = updateContainers(name, pullspec, ds.Spec.Template.Spec.Containers)
+			updated = true
 		} else {
 			// Cribbed from: https://github.com/kubernetes/kubectl/blob/master/pkg/polymorphichelpers/objectrestarter.go#L32-L119 and https://github.com/derailed/k9s/blob/master/internal/dao/dp.go#L68-L114
 			klog.Infof("Container pullspec did not change from %s, restarting daemonset/%s to pull the latest image", pullspec, name)
@@ -282,7 +284,6 @@ func updateDaemonset(cs *framework.ClientSet, name, pullspec string) (bool, erro
 		}
 
 		_, err = cs.AppsV1Interface.DaemonSets(ctrlcommon.MCONamespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
-		updated = true
 
 		return err
 	})
