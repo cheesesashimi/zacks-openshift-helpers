@@ -18,6 +18,19 @@ import (
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 )
 
+var (
+	mcoDaemonsets = []string{
+		"machine-config-daemon",
+		"machine-config-server",
+	}
+
+	mcoDeployments = []string{
+		"machine-config-operator",
+		"machine-config-controller",
+		"machine-os-builder",
+	}
+)
+
 const (
 	cvoName      string = "cluster-version-operator"
 	cvoNamespace string = "openshift-cluster-version"
@@ -31,110 +44,84 @@ const (
 func RevertToOriginalMCOImage(cs *framework.ClientSet) error {
 	clusterVersion, err := cs.ConfigV1Interface.ClusterVersions().Get(context.TODO(), "version", metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("could not get cluster version: %w", err)
 	}
 
 	currentRelease := clusterVersion.Status.Desired.Image
 	originalMCOImage, err := releasecontroller.GetComponentPullspecForRelease(mcoName, currentRelease)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not get MCO pullspec for cluster version %s: %w", currentRelease, err)
 	}
 
 	klog.Infof("Found original MCO image %s for the currently running cluster release (%s)", originalMCOImage, currentRelease)
 
 	if err := ReplaceMCOImage(cs, originalMCOImage); err != nil {
-		return err
+		return fmt.Errorf("could not roll MCO back to image %s: %w", originalMCOImage, err)
 	}
 
-	return setDeploymentReplicas(cs, cvoName, cvoNamespace, 1)
+	if err := setDeploymentReplicas(cs, cvoName, cvoNamespace, 1); err != nil {
+		return fmt.Errorf("could not restore cluster version operator to default replica count of 1")
+	}
+
+	return nil
 }
 
 func ReplaceMCOImage(cs *framework.ClientSet, pullspec string) error {
 	if err := setDeploymentReplicas(cs, cvoName, cvoNamespace, 0); err != nil {
-		return err
+		return fmt.Errorf("could not scale cluster version operator down to zero: %w", err)
 	}
 
 	if err := setDeploymentReplicas(cs, mcoName, ctrlcommon.MCONamespace, 0); err != nil {
-		return err
+		return fmt.Errorf("could not scale machine config operator down to zero: %w", err)
 	}
 
-	if err := updateMCOConfigMap(cs, pullspec); err != nil {
-		return err
-	}
-
-	components := map[string][]string{
-		"daemonset": {
-			"machine-config-server",
-			"machine-config-daemon",
-		},
-		"deployment": {
-			"machine-config-operator",
-			"machine-config-controller",
-			"machine-os-builder",
-		},
-	}
-
-	updated := false
-
-	daemonsetsUpdated, err := updateDaemonsets(cs, components["daemonset"], pullspec)
+	_, images, err := loadMCOImagesConfigMap(cs)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not load or parse ConfigMap %s: %w", mcoImagesConfigMap, err)
 	}
 
-	if daemonsetsUpdated {
-		updated = true
+	if images[mcoImageKey] != pullspec {
+		klog.Warningf("ConfigMap %s has pullspec %s, which will change to %s. A MachineConfig update will occur as a result.", mcoImagesConfigMap, images[mcoImageKey], pullspec)
+		if err := updateMCOConfigMap(cs, pullspec); err != nil {
+			return err
+		}
+	} else {
+		klog.Infof("ConfigMap %s already has pullspec %s. Will restart MCO components to cause an update.", mcoImagesConfigMap, pullspec)
 	}
 
-	deploymentsUpdated, err := updateDeployments(cs, components["deployment"], pullspec)
-	if err != nil {
-		return err
+	if err := updateDaemonsets(cs, pullspec); err != nil {
+		return fmt.Errorf("could not update daemonsets: %w", err)
 	}
 
-	if deploymentsUpdated {
-		updated = true
+	if err := updateDeployments(cs, pullspec); err != nil {
+		return fmt.Errorf("could not update deployments: %w", err)
 	}
 
-	if updated {
-		klog.Warningf("This update will trigger a MachineConfig update.")
+	if err := setDeploymentReplicas(cs, "machine-config-operator", ctrlcommon.MCONamespace, 1); err != nil {
+		return fmt.Errorf("could not scale machine config operator back up: %w", err)
 	}
 
-	return setDeploymentReplicas(cs, "machine-config-operator", ctrlcommon.MCONamespace, 1)
+	return nil
 }
 
-func updateDeployments(cs *framework.ClientSet, names []string, pullspec string) (bool, error) {
-	updated := false
-
-	for _, name := range names {
-		klog.Infof("Updating deployment/%s", name)
-		wasUpdated, err := updateDeployment(cs, name, pullspec)
-		if err != nil {
-			return false, err
-		}
-
-		if wasUpdated {
-			updated = true
+func updateDeployments(cs *framework.ClientSet, pullspec string) error {
+	for _, name := range mcoDeployments {
+		if err := updateDeployment(cs, name, pullspec); err != nil {
+			return fmt.Errorf("could not update deployment/%s: %w", name, err)
 		}
 	}
 
-	return updated, nil
+	return nil
 }
 
-func updateDaemonsets(cs *framework.ClientSet, names []string, pullspec string) (bool, error) {
-	updated := false
-
-	for _, name := range names {
-		klog.Infof("Updating daemonset/%s", name)
-		wasUpdated, err := updateDaemonset(cs, name, pullspec)
-		if err != nil {
-			return false, err
-		}
-
-		if wasUpdated {
-			updated = true
+func updateDaemonsets(cs *framework.ClientSet, pullspec string) error {
+	for _, name := range mcoDaemonsets {
+		if err := updateDaemonset(cs, name, pullspec); err != nil {
+			return fmt.Errorf("could not update daemonset/%s: %w", name, err)
 		}
 	}
 
-	return updated, nil
+	return nil
 }
 
 func loadMCOImagesConfigMap(cs *framework.ClientSet) (*corev1.ConfigMap, map[string]string, error) {
@@ -151,7 +138,7 @@ func loadMCOImagesConfigMap(cs *framework.ClientSet) (*corev1.ConfigMap, map[str
 	images := map[string]string{}
 
 	if err := json.Unmarshal([]byte(cm.Data[mcoImagesJSON]), &images); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("could not unpack %s in Configmap %s: %w", mcoImagesJSON, mcoImagesConfigMap, err)
 	}
 
 	if _, ok := images[mcoImageKey]; !ok {
@@ -166,11 +153,6 @@ func updateMCOConfigMap(cs *framework.ClientSet, pullspec string) error {
 		cm, images, err := loadMCOImagesConfigMap(cs)
 		if err != nil {
 			return err
-		}
-
-		if images[mcoImageKey] == pullspec {
-			klog.Infof("Container pullspec did not change from %s, skipping ConfigMap update", pullspec)
-			return nil
 		}
 
 		images[mcoImageKey] = pullspec
@@ -188,57 +170,14 @@ func updateMCOConfigMap(cs *framework.ClientSet, pullspec string) error {
 
 	if err == nil {
 		klog.Infof("Set %s in %s in ConfigMap %s to %s", mcoImageKey, mcoImagesJSON, mcoImagesConfigMap, pullspec)
-	}
-
-	return err
-}
-
-func replaceMCOConfigmap(cs *framework.ClientSet, pullspec string) error {
-	cm, images, err := loadMCOImagesConfigMap(cs)
-	if err != nil {
-		return err
-	}
-
-	if images[mcoImageKey] == pullspec {
-		klog.Infof("Container pullspec did not change from %s, skipping ConfigMap update", pullspec)
 		return nil
 	}
 
-	images[mcoImageKey] = pullspec
-
-	imagesBytes, err := json.Marshal(images)
-	if err != nil {
-		return err
-	}
-
-	cm.Data[mcoImagesJSON] = string(imagesBytes)
-
-	replacementCM := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:   cm.Namespace,
-			Name:        cm.Name,
-			Annotations: cm.Annotations,
-			Labels:      cm.Labels,
-		},
-		Data: cm.Data,
-	}
-
-	if err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Delete(context.TODO(), mcoImagesConfigMap, metav1.DeleteOptions{}); err != nil {
-		return err
-	}
-
-	if _, err = cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Create(context.TODO(), replacementCM, metav1.CreateOptions{}); err != nil {
-		return err
-	}
-
-	klog.Infof("Set %s in %s in ConfigMap %s to %s", mcoImageKey, mcoImagesJSON, mcoImagesConfigMap, pullspec)
-
-	return nil
+	return fmt.Errorf("could not update ConfigMap %s: %w", mcoImagesConfigMap, err)
 }
 
-func updateDeployment(cs *framework.ClientSet, name, pullspec string) (bool, error) {
-	updated := false
-	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+func updateDeployment(cs *framework.ClientSet, name, pullspec string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		deploy, err := cs.AppsV1Interface.Deployments(ctrlcommon.MCONamespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if name == "machine-os-builder" && apierrs.IsNotFound(err) {
 			return nil
@@ -249,37 +188,32 @@ func updateDeployment(cs *framework.ClientSet, name, pullspec string) (bool, err
 		}
 
 		if containersNeedUpdated(name, pullspec, deploy.Spec.Template.Spec.Containers) {
+			klog.Infof("Updating deployment/%s", name)
 			deploy.Spec.Template.Spec.Containers = updateContainers(name, pullspec, deploy.Spec.Template.Spec.Containers)
-			updated = true
 		} else {
 			// Cribbed from: https://github.com/kubernetes/kubectl/blob/master/pkg/polymorphichelpers/objectrestarter.go#L32-L119 and https://github.com/derailed/k9s/blob/master/internal/dao/dp.go#L68-L114
-			klog.Infof("Container pullspec did not change from %s, restarting deployment/%s to pull the latest image", pullspec, name)
+			klog.Infof("Restarting deployment/%s", name)
 			deploy.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
 		}
 
 		_, err = cs.AppsV1Interface.Deployments(ctrlcommon.MCONamespace).Update(context.TODO(), deploy, metav1.UpdateOptions{})
-
 		return err
 	})
-
-	return updated, err
 }
 
-func updateDaemonset(cs *framework.ClientSet, name, pullspec string) (bool, error) {
-	updated := false
-
-	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+func updateDaemonset(cs *framework.ClientSet, name, pullspec string) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		ds, err := cs.AppsV1Interface.DaemonSets(ctrlcommon.MCONamespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 
 		if containersNeedUpdated(name, pullspec, ds.Spec.Template.Spec.Containers) {
+			klog.Infof("Updating daemonset/%s", name)
 			ds.Spec.Template.Spec.Containers = updateContainers(name, pullspec, ds.Spec.Template.Spec.Containers)
-			updated = true
 		} else {
 			// Cribbed from: https://github.com/kubernetes/kubectl/blob/master/pkg/polymorphichelpers/objectrestarter.go#L32-L119 and https://github.com/derailed/k9s/blob/master/internal/dao/dp.go#L68-L114
-			klog.Infof("Container pullspec did not change from %s, restarting daemonset/%s to pull the latest image", pullspec, name)
+			klog.Infof("Restarting daemonset/%s", name)
 			ds.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
 		}
 
@@ -287,8 +221,6 @@ func updateDaemonset(cs *framework.ClientSet, name, pullspec string) (bool, erro
 
 		return err
 	})
-
-	return updated, err
 }
 
 func containersNeedUpdated(name, pullspec string, containers []corev1.Container) bool {
