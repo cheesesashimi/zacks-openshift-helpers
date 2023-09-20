@@ -14,6 +14,7 @@ import (
 type clusterBuildOpts struct {
 	repoRoot    string
 	followBuild bool
+	skipRollout bool
 }
 
 func (c *clusterBuildOpts) validate() error {
@@ -76,6 +77,11 @@ func runClusterCmd(_ *cobra.Command, _ []string) error {
 
 	if err := builder.Build(); err != nil {
 		return fmt.Errorf("could not build in cluster: %w", err)
+	}
+
+	if clusterOpts.skipRollout {
+		klog.Infof("Skipping rollout because --skip-rollout flag was used")
+		return nil
 	}
 
 	if err := builder.Push(); err != nil {

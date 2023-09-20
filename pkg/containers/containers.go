@@ -2,6 +2,7 @@ package containers
 
 import (
 	"context"
+	"strings"
 
 	"github.com/containers/image/v5/docker"
 	"github.com/containers/image/v5/docker/reference"
@@ -11,6 +12,11 @@ import (
 func ResolveToDigestedPullspec(pullspec, pullSecretPath string) (string, error) {
 	sysCtx := &types.SystemContext{
 		AuthFilePath: pullSecretPath,
+	}
+
+	if strings.Contains(pullspec, "image-registry-openshift-image-registry") {
+		sysCtx.OCIInsecureSkipTLSVerify = true
+		sysCtx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(true)
 	}
 
 	tagged, err := docker.ParseReference("//" + pullspec)

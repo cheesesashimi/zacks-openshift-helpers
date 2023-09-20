@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/mco-builder/builders"
+	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/containers"
 	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/repo"
 	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
@@ -24,6 +25,7 @@ type localBuildOpts struct {
 	directPush               bool
 	buildMode                string // repo.BuildMode
 	repoRoot                 string
+	skipRollout              bool
 }
 
 func (l *localBuildOpts) getBuilderType() builders.BuilderType {
@@ -114,6 +116,7 @@ func init() {
 	localCmd.PersistentFlags().StringVar(&opts.finalImagePullspec, "final-image-pullspec", "", "Where to push the final image (not needed in direct mode)")
 	localCmd.PersistentFlags().StringVar(&opts.buildMode, "build-mode", string(repo.BuildModeFast), fmt.Sprintf("What build mode to use: %v", sets.List(buildModes)))
 	localCmd.PersistentFlags().StringVar(&opts.builderKind, "builder", string(builders.GetDefaultBuilderTypeForPlatform()), fmt.Sprintf("What image builder to use: %v", sets.List(builders.GetLocalBuilderTypes())))
+	localCmd.PersistentFlags().BoolVar(&opts.skipRollout, "skip-rollout", false, "Builds and pushes the image, but does not update the MCO deployment / daemonset objects")
 }
 
 func runLocalCmd(_ *cobra.Command, _ []string) error {
@@ -170,6 +173,18 @@ func buildLocallyAndDeploy(cs *framework.ClientSet, buildOpts localBuildOpts) er
 		return err
 	}
 
+	digestedPullspec, err := containers.ResolveToDigestedPullspec(buildOpts.finalImagePullspec, buildOpts.finalImagePushSecretPath)
+	if err != nil {
+		return fmt.Errorf("could not resolve %s to digested image pullspec: %w", buildOpts.finalImagePullspec, err)
+	}
+
+	klog.Infof("Pushed image has digested pullspec %s", digestedPullspec)
+
+	if buildOpts.skipRollout {
+		klog.Infof("Skipping rollout since --skip-rollout was used")
+		return nil
+	}
+
 	if err := rollout.ReplaceMCOImage(cs, buildOpts.finalImagePullspec); err != nil {
 		return err
 	}
@@ -218,9 +233,11 @@ func buildLocallyAndPushIntoCluster(cs *framework.ClientSet, buildOpts localBuil
 		}
 	}()
 
+	extPullspec := fmt.Sprintf("%s/%s/machine-config-operator:latest", extHostname, ctrlcommon.MCONamespace)
+
 	opts := builders.Opts{
 		RepoRoot:       buildOpts.repoRoot,
-		FinalPullspec:  fmt.Sprintf("%s/%s/machine-config-operator:latest", extHostname, ctrlcommon.MCONamespace),
+		FinalPullspec:  extPullspec,
 		PushSecretPath: secretPath,
 		DockerfileName: r.DockerfilePath(),
 	}
@@ -233,6 +250,18 @@ func buildLocallyAndPushIntoCluster(cs *framework.ClientSet, buildOpts localBuil
 
 	if err := builder.Push(); err != nil {
 		return err
+	}
+
+	digestedPullspec, err := containers.ResolveToDigestedPullspec(extPullspec, secretPath)
+	if err != nil {
+		return fmt.Errorf("could not resolve %s to digested image pullspec: %w", extPullspec, err)
+	}
+
+	klog.Infof("Pushed image has digested pullspec %s", digestedPullspec)
+
+	if buildOpts.skipRollout {
+		klog.Infof("Skipping rollout since --skip-rollout was used")
+		return nil
 	}
 
 	if err := rollout.ReplaceMCOImage(cs, imagestreamPullspec); err != nil {
