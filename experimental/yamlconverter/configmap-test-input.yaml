@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-configmap
+  namespace: test-namespace
+data:
+  a-file: o hai
+  b-file: hello
+  c-file: kthxbai

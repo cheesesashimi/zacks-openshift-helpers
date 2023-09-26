@@ -1,0 +1,15 @@
+&corev1.ConfigMap{
+	TypeMeta: metav1.TypeMeta{
+		Kind:       "ConfigMap",
+		APIVersion: "v1",
+	},
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "test-configmap",
+		Namespace: "test-namespace",
+	},
+	Data: map[string]string{
+		"a-file": "o hai",
+		"b-file": "hello",
+		"c-file": "kthxbai",
+	},
+}
