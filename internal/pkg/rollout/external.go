@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	routeClient "github.com/openshift/client-go/route/clientset/versioned"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
@@ -41,7 +42,9 @@ func ExposeClusterImageRegistry(cs *framework.ClientSet) (string, error) {
 
 	if apierrs.IsNotFound(err) {
 		cmd := exec.Command("oc", "expose", "-n", imageRegistryNamespace, fmt.Sprintf("svc/%s", imageRegistryObject))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfig))
+		cmd.Env = utils.ToEnvVars(map[string]string{
+			"KUBECONFIG": kubeconfig,
+		})
 		klog.Infof("Running %s", cmd)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return "", errors.NewExecError(cmd, out, err)
@@ -63,7 +66,9 @@ func ExposeClusterImageRegistry(cs *framework.ClientSet) (string, error) {
 	klog.Infof("Patched %s", imageRegistryObject)
 
 	cmd := exec.Command("oc", "-n", ctrlcommon.MCONamespace, "policy", "add-role-to-group", "registry-viewer", "system:anonymous")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfig))
+	cmd.Env = utils.ToEnvVars(map[string]string{
+		"KUBECONFIG": kubeconfig,
+	})
 	klog.Infof("Running %s", cmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", errors.NewExecError(cmd, out, err)
@@ -104,7 +109,10 @@ func UnexposeClusterImageRegistry(cs *framework.ClientSet) error {
 	klog.Infof("Service for %s deleted", imageRegistryObject)
 
 	cmd := exec.Command("oc", "-n", ctrlcommon.MCONamespace, "policy", "remove-role-from-group", "registry-viewer", "system:anonymous")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfig))
+	cmd.Env = utils.ToEnvVars(map[string]string{
+		"KUBECONFIG": kubeconfig,
+	})
+
 	klog.Infof("Running %s", cmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.NewExecError(cmd, out, err)

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/rollout"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	buildv1 "github.com/openshift/api/build/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	corev1 "k8s.io/api/core/v1"
@@ -79,7 +80,9 @@ func (o *openshiftBuilder) waitForBuildToComplete() error {
 
 	name := fmt.Sprintf("build/%s", buildName)
 	cmd := exec.Command("oc", "logs", "-f", name, "-n", ctrlcommon.MCONamespace)
-	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfig))
+	cmd.Env = utils.ToEnvVars(map[string]string{
+		"KUBECONFIG": kubeconfig,
+	})
 
 	if o.opts.FollowBuild {
 		klog.Infof("Streaming build logs...")

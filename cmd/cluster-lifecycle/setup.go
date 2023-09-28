@@ -8,6 +8,7 @@ import (
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
@@ -159,7 +160,9 @@ func applyPostInstallManifests(opts inputOpts) error {
 	klog.Infof("Applying post installation manifests from %s", opts.postInstallManifestPath)
 
 	cmd := exec.Command("oc", "apply", "-f", opts.postInstallManifestPath)
-	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", filepath.Join(opts.workDir, "auth", "kubeconfig")))
+	cmd.Env = utils.ToEnvVars(map[string]string{
+		"KUBECONFIG": filepath.Join(opts.workDir, "auth", "kubeconfig"),
+	})
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	klog.Infof("Running %s", cmd)

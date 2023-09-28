@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 )
@@ -77,12 +78,16 @@ func makeBinaries(repoRoot string) error {
 		return err
 	}
 
+	if err := utils.CheckForBinaries([]string{"go", "make"}); err != nil {
+		return err
+	}
+
 	cmd := exec.Command("make", "binaries")
-	cmd.Env = append(cmd.Env, toEnvVars(map[string]string{
+	cmd.Env = utils.ToEnvVars(map[string]string{
 		"HOME":   u.HomeDir,
 		"GOARCH": "amd64",
 		"GOOS":   "linux",
-	})...)
+	})
 	cmd.Dir = repoRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
