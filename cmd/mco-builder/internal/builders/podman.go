@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/errors"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
 	"k8s.io/klog"
 )
 

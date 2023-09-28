@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/errors"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 )

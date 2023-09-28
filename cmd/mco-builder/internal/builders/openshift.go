@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/rollout"
 	buildv1 "github.com/openshift/api/build/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	corev1 "k8s.io/api/core/v1"

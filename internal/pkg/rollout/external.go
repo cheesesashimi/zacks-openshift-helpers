@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/errors"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
 	routeClient "github.com/openshift/client-go/route/clientset/versioned"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"

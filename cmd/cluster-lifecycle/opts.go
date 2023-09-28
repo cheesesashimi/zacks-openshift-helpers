@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/PaesslerAG/jsonpath"
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/installconfig"
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/releasecontroller"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
 	"k8s.io/klog"
 )
 

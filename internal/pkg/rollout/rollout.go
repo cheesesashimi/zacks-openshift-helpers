@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/releasecontroller"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"

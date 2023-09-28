@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/containers"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/containers"
 	"k8s.io/klog"
 )
 

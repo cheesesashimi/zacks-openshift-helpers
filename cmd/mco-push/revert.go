@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/rollout"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
 	"k8s.io/klog"

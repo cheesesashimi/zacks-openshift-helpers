@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/mco-builder/builders"
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/repo"
+	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/mco-builder/internal/builders"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/repo"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"

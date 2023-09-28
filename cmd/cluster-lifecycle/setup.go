@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/installconfig"
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/releasecontroller"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"

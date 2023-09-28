@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/rollout"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"

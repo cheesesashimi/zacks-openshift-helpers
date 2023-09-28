@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/pkg/rollout"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/rollout"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
 	"k8s.io/component-base/cli"
