@@ -1,10 +1,12 @@
 package repo
 
 import (
+	"embed"
 	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -38,6 +40,11 @@ func GetBuildModes() sets.Set[BuildMode] {
 }
 
 const (
+	repoMakefileName string = "Makefile"
+	repoDockerfileName string = "Dockerfile"
+)
+
+const (
 	fastBuildDockerfileName string = "Dockerfile.fast-build"
 	fastBuildMakefileName   string = "Makefile.fast-build"
 )
@@ -46,14 +53,9 @@ const (
 	clusterBuildDockerfileName string = "Dockerfile.cluster"
 )
 
-//go:embed Dockerfile.fast-build
-var fastBuildDockerfile []byte
 
-//go:embed Makefile.fast-build
-var fastBuildMakefile []byte
-
-//go:embed Dockerfile.cluster
-var clusterBuildDockerfile []byte
+//go:embed *
+var f embed.FS
 
 type overrideableRepoFile struct {
 	path     string
@@ -95,6 +97,43 @@ type MCORepo struct {
 	gitInfo
 }
 
+func newMCORepoWithNormalBuildMode(repoRoot string) (*MCORepo, error) {
+	gi, err := getGitInfo(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("could not load Git info for repo root %s: %w", repoRoot, err)
+	}
+
+	makefileContents, err := os.ReadFile(filepath.Join(repoRoot, repoMakefileName))
+	if err != nil {
+		return nil, err
+	}
+
+	dockerfileContents, err := os.ReadFile(filepath.Join(repoRoot, repoDockerfileName))
+	if err != nil {
+		return nil, err
+	}
+
+	r := &MCORepo{
+		repoRoot:    repoRoot,
+		buildMode: BuildModeNormal,
+		gitInfo:     *gi,
+		makefiles: map[BuildMode]overrideableRepoFile{
+			BuildModeNormal: {
+				path: filepath.Join(repoRoot, repoMakefileName),
+				contents: makefileContents,
+			},
+		},
+		dockerfiles: map[BuildMode]overrideableRepoFile{
+			BuildModeNormal: {
+				path: filepath.Join(repoRoot, repoDockerfileName),
+				contents: dockerfileContents,
+			},
+		},
+	}
+
+	return r, nil
+}
+
 func NewMCORepo(repoRoot string, mode BuildMode) (*MCORepo, error) {
 	if _, err := os.Stat(repoRoot); err != nil {
 		return nil, fmt.Errorf("could not load MCO repo root: %w", err)
@@ -104,18 +143,44 @@ func NewMCORepo(repoRoot string, mode BuildMode) (*MCORepo, error) {
 		return nil, err
 	}
 
+	repoDockerfile, err := os.ReadFile(filepath.Join(repoRoot, "Dockerfile"))
+	if err != nil {
+		return nil, fmt.Errorf("could not read repo dockerfile: %w", err)
+	}
+
+	version, err := inferOCPVersionFromDockerfile(repoDockerfile)
+	if err != nil {
+		return nil, fmt.Errorf("could not infer version from repo dockerfile: %w", err)
+	}
+
+	if mode == BuildModeNormal {
+		return newMCORepoWithNormalBuildMode(repoRoot)
+	}
+
+	versions := sets.New[string](supportedVersions()...)
+	if !versions.Has(version) {
+		return nil, fmt.Errorf("version %s is not supported for build mode %q, supported versions %v, use build mode %q", version, mode, supportedVersions(), BuildModeNormal)
+	}
+
+	fastBuildDockerfileContents, err := getDockerfileContentsFromOCPVersion(version, BuildModeFast)
+	if err != nil {
+		return nil, err
+	}
+
+	clusterBuildDockerfileContents, err := getDockerfileContentsFromOCPVersion(version, BuildModeCluster)
+	if err != nil {
+		return nil, err
+	}
+
 	dockerfiles, err := populateOverrideableRepoFileMap(map[BuildMode]overrideableRepoFile{
-		BuildModeNormal: {
-			path: filepath.Join(repoRoot, "Dockerfile"),
-		},
 		BuildModeFast: {
 			path:     filepath.Join(repoRoot, fastBuildDockerfileName),
-			contents: fastBuildDockerfile,
+			contents: fastBuildDockerfileContents,
 			embedded: true,
 		},
 		BuildModeCluster: {
 			path:     filepath.Join(repoRoot, clusterBuildDockerfileName),
-			contents: clusterBuildDockerfile,
+			contents: clusterBuildDockerfileContents,
 			embedded: true,
 		},
 	})
@@ -124,17 +189,19 @@ func NewMCORepo(repoRoot string, mode BuildMode) (*MCORepo, error) {
 		return nil, fmt.Errorf("could not load Dockerfile: %w", err)
 	}
 
+	fastBuildMakefile, err := f.ReadFile(fastBuildMakefileName)
+	if err != nil {
+		return nil, fmt.Errorf("could not load %s: %w", fastBuildMakefileName, err)
+	}
+
 	makefiles, err := populateOverrideableRepoFileMap(map[BuildMode]overrideableRepoFile{
-		BuildModeNormal: {
-			path: filepath.Join(repoRoot, "Makefile"),
-		},
 		BuildModeFast: {
 			path:     filepath.Join(repoRoot, fastBuildMakefileName),
 			contents: fastBuildMakefile,
 			embedded: true,
 		},
 		BuildModeCluster: {
-			path: filepath.Join(repoRoot, "Makefile"),
+			path: filepath.Join(repoRoot, repoMakefileName),
 		},
 	})
 
@@ -253,6 +320,44 @@ func getGitInfo(repoRoot string) (*gitInfo, error) {
 	return gi, nil
 }
 
+func supportedVersions() []string {
+	return []string{
+		"4.14",
+		"4.15",
+	}
+}
+
+func getDockerfileContentsFromOCPVersion(version string, buildMode BuildMode) ([]byte, error) {
+	suffixes := map[BuildMode]string {
+		BuildModeFast: "fast-build",
+		BuildModeCluster: "cluster",
+	}
+
+	suffix, ok := suffixes[buildMode]
+	if !ok {
+		return nil, fmt.Errorf("no dockerfile suffix for build mode %s", buildMode)
+	}
+
+	versions := sets.New[string](supportedVersions()...)
+	if !versions.Has(version) {
+		return nil, fmt.Errorf("no dockerfile for suffix %s and OCP version %s", suffix, version)
+	}
+
+	filename := fmt.Sprintf("Dockerfile.%s-%s", suffix, version)
+	return f.ReadFile(filename)
+}
+
+var ocpBaseRegex = regexp.MustCompile(`registry\.ci\.openshift.org\/ocp\/(4\.[0-9][0-9])\:base`)
+
+func inferOCPVersionFromDockerfile(in []byte) (string, error) {
+	matches := ocpBaseRegex.FindAllStringSubmatch(string(in), -1)
+	if matches == nil {
+		return "", fmt.Errorf("did not find an OCP base image in repo Dockerfile")
+	}
+
+	return matches[0][1], nil
+}
+
 func getURLFromRemotes(remotes []*git.Remote) (string, error) {
 	for _, remote := range remotes {
 		for _, u := range remote.Config().URLs {
@@ -293,4 +398,13 @@ func populateOverrideableRepoFileMap(in map[BuildMode]overrideableRepoFile) (map
 	}
 
 	return out, nil
+}
+
+func mustLoadEmbeddedFile(path string) []byte {
+	out, err := f.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+
+	return out
 }
