@@ -9,6 +9,14 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/component-base/cli"
 	"k8s.io/klog"
+
+	versioncmd "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version"
+)
+
+var (
+	version = "not-built-properly"
+	commit  = "not-built-properly"
+	date    = "not-built-properly"
 )
 
 var (
@@ -23,6 +31,7 @@ var (
 )
 
 func main() {
+	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
 	rootCmd.PersistentFlags().StringVar(&timeout, "timeout", "15m", "Timeout expressed in 0h0m0s format.")
 	os.Exit(cli.Run(rootCmd))
 }

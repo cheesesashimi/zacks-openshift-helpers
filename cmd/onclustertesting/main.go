@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"k8s.io/component-base/cli"
+
+	versioncmd "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version"
 )
 
 const (
@@ -20,8 +22,15 @@ var (
 	}
 )
 
+var (
+	version = "not-built-properly"
+	commit  = "not-built-properly"
+	date    = "not-built-properly"
+)
+
 func init() {
 	rootCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
+	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
 }
 
 func main() {

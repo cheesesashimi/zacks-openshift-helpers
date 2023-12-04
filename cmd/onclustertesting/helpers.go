@@ -23,7 +23,6 @@ import (
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/pkg/daemon/constants"
-	"github.com/openshift/machine-config-operator/pkg/version"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -669,9 +668,6 @@ func common(opts interface{}) {
 	flag.Parse()
 
 	klog.Infof("Options parsed: %+v", opts)
-
-	// To help debugging, immediately log version
-	klog.Infof("Version: %+v (%s)", version.Raw, version.Hash)
 }
 
 func failIfNotSet(in, name string) {
