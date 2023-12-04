@@ -30,9 +30,12 @@ var (
 	timeout string
 )
 
-func main() {
+func init() {
 	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
 	rootCmd.PersistentFlags().StringVar(&timeout, "timeout", "15m", "Timeout expressed in 0h0m0s format.")
+}
+
+func main() {
 	os.Exit(cli.Run(rootCmd))
 }
 
