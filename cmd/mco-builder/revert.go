@@ -15,7 +15,7 @@ import (
 var (
 	revertCmd = &cobra.Command{
 		Use:   "revert",
-		Short: "Reverts the changes to the sandbox cluster to use a custom MCO image.",
+		Short: "Reverts the changes to the sandbox cluster and rolls back to the stock MCO image.",
 		Long:  "",
 		RunE:  doRevert,
 	}
