@@ -1,14 +1,14 @@
 apiVersion: v1
 baseDomain: devcluster.openshift.com
 compute:
-- architecture: amd64
-  hyperthreading: Enabled
-  name: worker
-  platform:
-    aws:
-      zones:
-        - us-east-1d
-  replicas: 0
+  - architecture: amd64
+    hyperthreading: Enabled
+    name: worker
+    platform:
+      aws:
+        zones:
+          - us-east-1d
+    replicas: 0
 controlPlane:
   architecture: amd64
   hyperthreading: Enabled
@@ -23,13 +23,13 @@ metadata:
   name: ""
 networking:
   clusterNetwork:
-  - cidr: 10.128.0.0/14
-    hostPrefix: 23
+    - cidr: 10.128.0.0/14
+      hostPrefix: 23
   machineNetwork:
-  - cidr: 10.0.0.0/16
-  networkType: OpenShiftSDN
+    - cidr: 10.0.0.0/16
+  networkType: OVNKubernetes
   serviceNetwork:
-  - 172.30.0.0/16
+    - 172.30.0.0/16
 platform:
   aws:
     region: us-east-1
