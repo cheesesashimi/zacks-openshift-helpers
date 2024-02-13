@@ -10,6 +10,7 @@ import (
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/containers"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/repo"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/rollout"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
@@ -41,7 +42,7 @@ func (l *localBuildOpts) validate() error {
 		return fmt.Errorf("--repo-root must be provided")
 	}
 
-	if _, err := exec.LookPath("oc"); err != nil {
+	if err := utils.CheckForBinaries([]string{"oc"}); err != nil {
 		return err
 	}
 
@@ -71,7 +72,7 @@ func (l *localBuildOpts) validate() error {
 			return fmt.Errorf("--final-image-pullspec may not be used in direct mode")
 		}
 
-		if _, err := exec.LookPath("skopeo"); err != nil {
+		if err := utils.CheckForBinaries([]string{"skopeo"}); err != nil {
 			return err
 		}
 
@@ -89,6 +90,13 @@ func (l *localBuildOpts) validate() error {
 	if l.finalImagePullspec == "" {
 		return fmt.Errorf("--final-image-pullspec must be provided when not using direct mode")
 	}
+
+	parsedPullspec, err := containers.AddLatestTagIfMissing(l.finalImagePullspec)
+	if err != nil {
+		return fmt.Errorf("could not parse final image pullspec %q: %w", l.finalImagePullspec, err)
+	}
+
+	l.finalImagePullspec = parsedPullspec
 
 	return nil
 }

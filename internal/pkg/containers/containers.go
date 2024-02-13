@@ -36,3 +36,12 @@ func ResolveToDigestedPullspec(pullspec, pullSecretPath string) (string, error) 
 
 	return canonical.String(), nil
 }
+
+func AddLatestTagIfMissing(pullspec string) (string, error) {
+	parsed, err := docker.ParseReference("//" + pullspec)
+	if err != nil {
+		return "", err
+	}
+
+	return parsed.DockerReference().String(), nil
+}
