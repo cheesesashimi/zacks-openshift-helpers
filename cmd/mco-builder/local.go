@@ -72,11 +72,7 @@ func (l *localBuildOpts) validate() error {
 			return fmt.Errorf("--final-image-pullspec may not be used in direct mode")
 		}
 
-		if err := utils.CheckForBinaries([]string{"skopeo"}); err != nil {
-			return err
-		}
-
-		return nil
+		return utils.CheckForBinaries([]string{"skopeo"})
 	}
 
 	if l.finalImagePushSecretPath == "" {
