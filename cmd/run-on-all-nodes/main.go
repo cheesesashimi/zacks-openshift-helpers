@@ -40,6 +40,7 @@ var (
 var (
 	labelSelector string
 	keepGoing     bool
+	writeLogs     bool
 )
 
 func init() {
@@ -47,6 +48,7 @@ func init() {
 	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
 	rootCmd.PersistentFlags().StringVar(&labelSelector, "label-selector", "", "Label selector for nodes.")
 	rootCmd.PersistentFlags().BoolVar(&keepGoing, "keep-going", false, "Do not stop on first command error")
+	rootCmd.PersistentFlags().BoolVar(&writeLogs, "write-logs", false, "Write command logs to disk under $PWD/<nodename>.log")
 }
 
 func main() {
@@ -95,7 +97,16 @@ func runCommand(outChan chan string, kubeconfig string, node *corev1.Node, comma
 	fmt.Fprintf(out, "$ %s\n", command)
 	fmt.Fprintln(out, stdout.String())
 
+	logFileName := fmt.Sprintf("%s.log", node.Name)
+	if writeLogs {
+		fmt.Fprintf(out, "Writing log to %s\n", logFileName)
+	}
+
 	outChan <- out.String()
+
+	if writeLogs {
+		return os.WriteFile(logFileName, stdout.Bytes(), 0o644)
+	}
 
 	return nil
 }

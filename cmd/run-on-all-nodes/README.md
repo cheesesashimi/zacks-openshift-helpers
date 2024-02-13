@@ -166,6 +166,64 @@ $ unknown-command
 /bin/bash: line 1: unknown-command: command not found
 ```
 
+To capture output from each node, use the `--write-logs` flag:
+
+```console
+$ run-on-all-nodes --write-logs 'uptime'
+Running on nodes: [ip-10-0-11-145.ec2.internal ip-10-0-16-30.ec2.internal ip-10-0-34-4.ec2.internal ip-10-0-59-143.ec2.internal ip-10-0-59-75.ec2.internal ip-10-0-6-62.ec2.internal]
+
+[ip-10-0-16-30.ec2.internal - [node-role.kubernetes.io/control-plane node-role.kubernetes.io/master]]:
+$ uptime
+ 17:14:37 up  1:18,  0 users,  load average: 6.99, 6.75, 6.71
+
+Writing log to ip-10-0-16-30.ec2.internal.log
+
+[ip-10-0-11-145.ec2.internal - [node-role.kubernetes.io/control-plane node-role.kubernetes.io/master]]:
+$ uptime
+ 17:14:37 up  1:23,  0 users,  load average: 7.02, 6.92, 7.07
+
+Writing log to ip-10-0-11-145.ec2.internal.log
+
+[ip-10-0-59-75.ec2.internal - [node-role.kubernetes.io/worker]]:
+$ uptime
+ 17:14:37 up  1:36,  0 users,  load average: 6.21, 5.46, 5.26
+
+Writing log to ip-10-0-59-75.ec2.internal.log
+
+[ip-10-0-34-4.ec2.internal - [node-role.kubernetes.io/control-plane node-role.kubernetes.io/master]]:
+$ uptime
+ 17:14:37 up  1:29,  0 users,  load average: 9.38, 7.76, 7.76
+
+Writing log to ip-10-0-34-4.ec2.internal.log
+
+[ip-10-0-6-62.ec2.internal - [node-role.kubernetes.io/worker]]:
+$ uptime
+ 17:14:37 up  1:27,  0 users,  load average: 4.56, 4.28, 4.25
+
+Writing log to ip-10-0-6-62.ec2.internal.log
+
+[ip-10-0-59-143.ec2.internal - [node-role.kubernetes.io/worker]]:
+$ uptime
+ 17:14:37 up  1:32,  0 users,  load average: 4.87, 5.05, 5.00
+
+Writing log to ip-10-0-59-143.ec2.internal.log
+```
+
+The logs will be written to the current directory:
+
+```console
+$ ls -la *.log
+-rwxr-xr-x@ 1 zzlotnik  staff  62 Feb 13 12:14 ip-10-0-11-145.ec2.internal.log
+-rwxr-xr-x@ 1 zzlotnik  staff  62 Feb 13 12:14 ip-10-0-16-30.ec2.internal.log
+-rwxr-xr-x@ 1 zzlotnik  staff  62 Feb 13 12:14 ip-10-0-34-4.ec2.internal.log
+-rwxr-xr-x@ 1 zzlotnik  staff  62 Feb 13 12:14 ip-10-0-59-143.ec2.internal.log
+-rwxr-xr-x@ 1 zzlotnik  staff  62 Feb 13 12:14 ip-10-0-59-75.ec2.internal.log
+-rwxr-xr-x@ 1 zzlotnik  staff  62 Feb 13 12:14 ip-10-0-6-62.ec2.internal.log
+
+$ cat ip-10-0-11-145.ec2.internal.log
+ 17:14:37 up  1:23,  0 users,  load average: 7.02, 6.92, 7.07
+```
+
 ## How does it work?
 
 This program shells out to the `oc` binary and uses the `oc debug` command. In
@@ -175,4 +233,4 @@ binaries available on the host.
 
 For speed, we spawn multiple concurrent instances of `oc debug` and wait for
 them to complete. Care is taken to ensure that output from each command is kept
-separate so there will be no interleaving.
+separate so there will be no output interleaving.
