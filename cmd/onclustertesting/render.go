@@ -15,7 +15,7 @@ var (
 		Use:   "render",
 		Short: "Renders the on-cluster build Dockerfile to disk",
 		Long:  "",
-		Run:   runRenderCmd,
+		RunE:  runRenderCmd,
 	}
 
 	renderOpts struct {
@@ -31,19 +31,30 @@ func init() {
 	renderCmd.PersistentFlags().StringVar(&renderOpts.targetDir, "dir", "", "Dir to store rendered Dockerfile and MachineConfig in")
 }
 
-func runRenderCmd(_ *cobra.Command, _ []string) {
+func runRenderCmd(_ *cobra.Command, _ []string) error {
 	common(renderOpts)
 
 	if renderOpts.poolName == "" {
-		failOnError(fmt.Errorf("no pool name provided"))
+		return fmt.Errorf("no pool name provided")
 	}
 
 	cs := framework.NewClientSet("")
 
-	dir := filepath.Join(getDir(renderOpts.targetDir), renderOpts.poolName)
+	targetDir, err := getDir(renderOpts.targetDir)
+	if err != nil {
+		return err
+	}
 
-	failOnError(renderDockerfileToDisk(cs, renderOpts.poolName, dir))
+	dir := filepath.Join(targetDir, renderOpts.poolName)
+
+	if err := renderDockerfileToDisk(cs, renderOpts.poolName, dir); err != nil {
+		return err
+	}
+
 	mcp, err := cs.MachineConfigPools().Get(context.TODO(), renderOpts.poolName, metav1.GetOptions{})
-	failOnError(err)
-	failOnError(storeMachineConfigOnDisk(cs, mcp, dir))
+	if err != nil {
+		return err
+	}
+
+	return storeMachineConfigOnDisk(cs, mcp, dir)
 }

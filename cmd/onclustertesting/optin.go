@@ -18,7 +18,7 @@ var (
 		Use:   "optin",
 		Short: "Opts a node into on-cluster builds",
 		Long:  "",
-		Run:   runOptInCmd,
+		RunE:  runOptInCmd,
 	}
 
 	optInOpts struct {
@@ -34,18 +34,18 @@ func init() {
 	optInCmd.PersistentFlags().StringVar(&optInOpts.nodeName, "node", "", "MachineConfig name")
 }
 
-func runOptInCmd(_ *cobra.Command, _ []string) {
+func runOptInCmd(_ *cobra.Command, _ []string) error {
 	common(optInOpts)
 
 	if isEmpty(optInOpts.poolName) {
-		klog.Fatalln("No pool name provided!")
+		return fmt.Errorf("no pool name provided")
 	}
 
 	if isEmpty(optInOpts.nodeName) {
-		klog.Fatalln("No node name provided!")
+		return fmt.Errorf("no node name provided")
 	}
 
-	failOnError(optInNode(framework.NewClientSet(""), optInOpts.nodeName, optInOpts.poolName))
+	return optInNode(framework.NewClientSet(""), optInOpts.nodeName, optInOpts.poolName)
 }
 
 func optInNode(cs *framework.ClientSet, nodeName, targetPool string) error {

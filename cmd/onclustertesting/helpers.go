@@ -198,8 +198,11 @@ func renderDockerfileToDisk(cs *framework.ClientSet, targetPool, dir string) err
 
 	dockerfile, err := os.Create(dockerfilePath)
 	defer func() {
-		failOnError(dockerfile.Close())
+		if err := dockerfile.Close(); err != nil {
+			panic(err)
+		}
 	}()
+
 	if err != nil {
 		return err
 	}
@@ -647,20 +650,12 @@ func storeBuildObjectsOnDisk(dockerfile, machineConfig, targetDir string) error 
 	return nil
 }
 
-func getDir(target string) string {
+func getDir(target string) (string, error) {
 	if target != "" {
-		return target
+		return target, nil
 	}
 
-	cwd, err := os.Getwd()
-	failOnError(err)
-	return cwd
-}
-
-func failOnError(err error) {
-	if err != nil {
-		klog.Fatalln(err)
-	}
+	return os.Getwd()
 }
 
 func common(opts interface{}) {
@@ -671,13 +666,15 @@ func common(opts interface{}) {
 	klog.Infof("Options parsed: %+v", opts)
 }
 
-func failIfNotSet(in, name string) {
+func errIfNotSet(in, name string) error {
 	if isEmpty(in) {
 		if !strings.HasPrefix(name, "--") {
 			name = "--" + name
 		}
-		klog.Fatalf("Required flag %s not set", name)
+		return fmt.Errorf("required flag %q not set", name)
 	}
+
+	return nil
 }
 
 func isNoneSet(in1, in2 string) bool {

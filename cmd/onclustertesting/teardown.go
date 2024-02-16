@@ -17,7 +17,7 @@ var (
 		Use:   "teardown",
 		Short: "Tears down the pool for on-cluster build testing",
 		Long:  "",
-		Run:   runTeardownCmd,
+		RunE:  runTeardownCmd,
 	}
 
 	teardownOpts struct {
@@ -36,16 +36,19 @@ func init() {
 	teardownCmd.PersistentFlags().BoolVar(&teardownOpts.force, "force", false, "Removes all on-cluster build related objects even if not created by this CLI tool")
 }
 
-func runTeardownCmd(_ *cobra.Command, _ []string) {
+func runTeardownCmd(_ *cobra.Command, _ []string) error {
 	common(teardownOpts)
 
 	if teardownOpts.poolName == "" {
 		klog.Fatalln("No pool name provided!")
 	}
 
-	targetDir := getDir(teardownOpts.dir)
+	targetDir, err := getDir(teardownOpts.dir)
+	if err != nil {
+		return err
+	}
 
-	failOnError(mobTeardown(framework.NewClientSet(""), teardownOpts.poolName, targetDir, teardownOpts.extract))
+	return mobTeardown(framework.NewClientSet(""), teardownOpts.poolName, targetDir, teardownOpts.extract)
 }
 
 func mobTeardown(cs *framework.ClientSet, targetPool, targetDir string, extractObjects bool) error {

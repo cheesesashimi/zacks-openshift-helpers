@@ -1,9 +1,10 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -11,7 +12,7 @@ var (
 		Use:   "clear-build-status",
 		Short: "Tears down the pool for on-cluster build testing",
 		Long:  "",
-		Run:   runClearStatusCmd,
+		RunE:  runClearStatusCmd,
 	}
 
 	clearStatusOpts struct {
@@ -24,12 +25,12 @@ func init() {
 	clearStatusCmd.PersistentFlags().StringVar(&clearStatusOpts.poolName, "pool", defaultLayeredPoolName, "Pool name to clear build status on")
 }
 
-func runClearStatusCmd(_ *cobra.Command, _ []string) {
+func runClearStatusCmd(_ *cobra.Command, _ []string) error {
 	common(clearStatusOpts)
 
 	if clearStatusOpts.poolName == "" {
-		klog.Fatalln("No pool name provided!")
+		return fmt.Errorf("no pool name provided")
 	}
 
-	failOnError(clearBuildStatusesOnPool(framework.NewClientSet(""), clearStatusOpts.poolName))
+	return clearBuildStatusesOnPool(framework.NewClientSet(""), clearStatusOpts.poolName)
 }

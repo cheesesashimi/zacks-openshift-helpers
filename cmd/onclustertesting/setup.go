@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
@@ -11,14 +13,14 @@ var (
 		Use:   "setup",
 		Short: "Sets up pool for on-cluster build testing",
 		Long:  "",
-		Run:   runSetupCmd,
+		RunE:  runSetupCmd,
 	}
 
 	inClusterRegistryCmd = &cobra.Command{
 		Use:   "in-cluster-registry",
 		Short: "Sets up pool for on-cluster build testing using an ImageStream",
 		Long:  "",
-		Run:   runInClusterRegistrySetupCmd,
+		RunE:  runInClusterRegistrySetupCmd,
 	}
 
 	setupOpts struct {
@@ -44,37 +46,41 @@ func init() {
 	setupCmd.PersistentFlags().StringVar(&setupOpts.finalImagePullspec, "final-pullspec", "", "The final image pushspec to use for testing")
 }
 
-func runSetupCmd(_ *cobra.Command, _ []string) {
+func runSetupCmd(_ *cobra.Command, _ []string) error {
 	common(setupOpts)
 
-	failIfNotSet(setupOpts.poolName, "pool")
-	failIfNotSet(setupOpts.finalImagePullspec, "final-pullspec")
+	// TODO: Figure out how to use cobra flags for validation directly.
+	if err := errIfNotSet(setupOpts.poolName, "pool"); err != nil {
+		return err
+	}
+
+	if err := errIfNotSet(setupOpts.finalImagePullspec, "final-pullspec"); err != nil {
+		return err
+	}
 
 	if isNoneSet(setupOpts.pushSecretPath, setupOpts.pushSecretName) {
-		klog.Fatalln("Either --push-secret-name or --push-secret-path must be provided!")
+		return fmt.Errorf("either --push-secret-name or --push-secret-path must be provided")
 	}
 
 	if !isOnlyOneSet(setupOpts.pushSecretPath, setupOpts.pushSecretName) {
-		klog.Fatalln("--pull-secret-name and --pull-secret-path cannot be combined!")
+		return fmt.Errorf("flags --pull-secret-name and --pull-secret-path cannot be combined")
 	}
 
 	if !isOnlyOneSet(setupOpts.pullSecretPath, setupOpts.pullSecretName) {
-		klog.Fatalln("--push-secret-name and --push-secret-path cannot be combined!")
+		return fmt.Errorf("flags --push-secret-name and --push-secret-path cannot be combined")
 	}
 
-	if err := mobSetup(framework.NewClientSet(""), setupOpts.poolName, setupOpts.waitForBuildInfo); err != nil {
-		klog.Fatal(err)
-	}
+	return mobSetup(framework.NewClientSet(""), setupOpts.poolName, setupOpts.waitForBuildInfo)
 }
 
-func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) {
+func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 	common(setupOpts)
 
-	failIfNotSet(setupOpts.poolName, "pool")
+	if err := errIfNotSet(setupOpts.poolName, "pool"); err != nil {
+		return err
+	}
 
-	cs := framework.NewClientSet("")
-
-	failOnError(inClusterMobSetup(cs, setupOpts.poolName, setupOpts.waitForBuildInfo))
+	return inClusterMobSetup(framework.NewClientSet(""), setupOpts.poolName, setupOpts.waitForBuildInfo)
 }
 
 func inClusterMobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool) error {

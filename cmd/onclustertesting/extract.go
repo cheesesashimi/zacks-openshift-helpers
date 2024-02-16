@@ -1,9 +1,10 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -11,7 +12,7 @@ var (
 		Use:   "extract",
 		Short: "Extracts the Dockerfile and MachineConfig from an on-cluster build",
 		Long:  "",
-		Run:   runExtractCmd,
+		RunE:  runExtractCmd,
 	}
 
 	extractOpts struct {
@@ -29,28 +30,27 @@ func init() {
 	extractCmd.PersistentFlags().StringVar(&extractOpts.targetDir, "dir", "", "Dir to store extract build objects")
 }
 
-func runExtractCmd(_ *cobra.Command, _ []string) {
+func runExtractCmd(_ *cobra.Command, _ []string) error {
 	common(extractOpts)
 
-	if extractOpts.poolName == "" && extractOpts.machineConfig == "" {
-		klog.Fatalln("No pool name or MachineConfig name provided!")
-	}
-
 	if extractOpts.poolName != "" && extractOpts.machineConfig != "" {
-		klog.Fatalln("Either pool name or MachineConfig must be provided. Not both!")
+		return fmt.Errorf("either pool name or MachineConfig must be provided; not both")
 	}
 
-	targetDir := getDir(extractOpts.targetDir)
+	targetDir, err := getDir(extractOpts.targetDir)
+	if err != nil {
+		return err
+	}
 
 	cs := framework.NewClientSet("")
 
 	if extractOpts.machineConfig != "" {
-		failOnError(extractBuildObjectsForRenderedMC(cs, extractOpts.machineConfig, targetDir))
-		return
+		return extractBuildObjectsForRenderedMC(cs, extractOpts.machineConfig, targetDir)
 	}
 
 	if extractOpts.poolName != "" {
-		failOnError(extractBuildObjectsForTargetPool(cs, extractOpts.poolName, targetDir))
-		return
+		return extractBuildObjectsForTargetPool(cs, extractOpts.poolName, targetDir)
 	}
+
+	return fmt.Errorf("no pool name or MachineConfig name provided")
 }

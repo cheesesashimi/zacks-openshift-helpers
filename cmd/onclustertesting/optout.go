@@ -17,7 +17,7 @@ var (
 		Use:   "optout",
 		Short: "Opts a node out of on-cluster builds",
 		Long:  "",
-		Run:   runOptOutCmd,
+		RunE:  runOptOutCmd,
 	}
 
 	optOutOpts struct {
@@ -34,18 +34,18 @@ func init() {
 	optOutCmd.PersistentFlags().BoolVar(&optOutOpts.force, "force", false, "Forcefully opt node out")
 }
 
-func runOptOutCmd(_ *cobra.Command, _ []string) {
+func runOptOutCmd(_ *cobra.Command, _ []string) error {
 	common(optOutOpts)
 
 	if !optOutOpts.force && isEmpty(optOutOpts.poolName) {
-		klog.Fatalln("No pool name provided!")
+		return fmt.Errorf("no pool name provided")
 	}
 
 	if isEmpty(optOutOpts.nodeName) {
-		klog.Fatalln("No node name provided!")
+		return fmt.Errorf("no node name provided")
 	}
 
-	failOnError(optOutNode(framework.NewClientSet(""), optOutOpts.nodeName, optOutOpts.poolName, optOutOpts.force))
+	return optOutNode(framework.NewClientSet(""), optOutOpts.nodeName, optOutOpts.poolName, optOutOpts.force)
 }
 
 func optOutNode(cs *framework.ClientSet, nodeName, poolName string, force bool) error {

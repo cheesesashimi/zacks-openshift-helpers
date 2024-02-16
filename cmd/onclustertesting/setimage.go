@@ -1,10 +1,11 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -12,7 +13,7 @@ var (
 		Use:   "set-image",
 		Short: "Sets an image pullspec on a MachineConfigPool",
 		Long:  "",
-		Run:   runSetImageCmd,
+		RunE:  runSetImageCmd,
 	}
 
 	setImageOpts struct {
@@ -27,19 +28,18 @@ func init() {
 	setImageCmd.PersistentFlags().StringVar(&setImageOpts.imageName, "image", "", "The image pullspec to set")
 }
 
-func runSetImageCmd(_ *cobra.Command, _ []string) {
+func runSetImageCmd(_ *cobra.Command, _ []string) error {
 	common(setImageOpts)
 
 	if setImageOpts.poolName == "" {
-		klog.Fatalln("No pool name provided!")
+		return fmt.Errorf("no pool name provided")
 	}
 
 	if setImageOpts.imageName == "" {
-		klog.Fatalln("No image name provided!")
+		return fmt.Errorf("no image name provided")
 	}
 
-	cs := framework.NewClientSet("")
-	failOnError(setImageOnPool(cs, setImageOpts.poolName, setImageOpts.imageName))
+	return setImageOnPool(framework.NewClientSet(""), setImageOpts.poolName, setImageOpts.imageName)
 }
 
 func setImageOnPool(cs *framework.ClientSet, targetPool, pullspec string) error {

@@ -23,7 +23,7 @@ var (
 		Use:   "machineconfig",
 		Short: "Creates a MachineConfig in a layered MachineConfigPool to cause a build",
 		Long:  "",
-		Run:   runMachineConfigCmd,
+		RunE:  runMachineConfigCmd,
 	}
 
 	machineConfigOpts struct {
@@ -42,16 +42,16 @@ func init() {
 	machineConfigCmd.PersistentFlags().BoolVar(&machineConfigOpts.dryRun, "dry-run", false, "Dump the MachineConfig to stdout instead of applying it")
 }
 
-func runMachineConfigCmd(_ *cobra.Command, _ []string) {
+func runMachineConfigCmd(_ *cobra.Command, _ []string) error {
 	common(machineConfigOpts)
 
 	if extractOpts.poolName == "" {
-		klog.Fatalln("No pool name provided!")
+		return fmt.Errorf("no pool name provided")
 	}
 
 	cs := framework.NewClientSet("")
 
-	failOnError(createMachineConfig(cs, machineConfigOpts.poolName, machineConfigOpts.machineConfig))
+	return createMachineConfig(cs, machineConfigOpts.poolName, machineConfigOpts.machineConfig)
 }
 
 func createMachineConfig(cs *framework.ClientSet, targetPool, name string) error {
