@@ -7,9 +7,11 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,11 +167,75 @@ func getImageBuildRequest(cs *framework.ClientSet, targetPool string) (*build.Im
 	return &buildReq, nil
 }
 
-func renderDockerfile(ibr *build.ImageBuildRequest, out io.Writer, copyToStdout bool) error {
-	// TODO: Export the template from the assets package.
-	dockerfileTemplate, err := os.ReadFile("/Users/zzlotnik/go/src/github.com/openshift/machine-config-operator/pkg/controller/build/assets/Dockerfile.on-cluster-build-template")
+func fetchDockerfileTemplate() ([]byte, error) {
+	dockerfileTemplate, err := fetchDockerfileTemplateFromDisk()
+	if err == nil {
+		return dockerfileTemplate, nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("could not get Dockerfile template from disk: %w", err)
+	}
+
+	klog.Infof("Could not fetch Dockerfile template from disk, falling back to GitHub...")
+	dockerfileTemplate, err = fetchDockerfileTemplateFromGitHub()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("could not fetch Dockerfile template from GitHub: %w", err)
+	}
+
+	return dockerfileTemplate, nil
+}
+
+// TODO: Export the template from the assets package or figure out how to build it into this binary.
+func fetchDockerfileTemplateFromDisk() ([]byte, error) {
+	templatePath := "/Users/zzlotnik/go/src/github.com/openshift/machine-config-operator/pkg/controller/build/assets/Dockerfile.on-cluster-build-template"
+
+	klog.Infof("Attempting to fetch Dockerfile template from %q", templatePath)
+
+	dockerfileTemplate, err := os.ReadFile(templatePath)
+	if err != nil {
+		klog.Errorf("Attempt failed: %s", err)
+		return nil, err
+	}
+
+	klog.Infof("Attempt succeeded")
+	return dockerfileTemplate, nil
+}
+
+func fetchDockerfileTemplateFromGitHub() ([]byte, error) {
+	templateURL := "https://raw.githubusercontent.com/openshift/machine-config-operator/master/pkg/controller/build/assets/Dockerfile.on-cluster-build-template"
+
+	klog.Infof("Attempting to fetch Dockerfile template from %q", templateURL)
+
+	resp, err := http.Get(templateURL)
+	if err != nil {
+		klog.Errorf("Attempt unsuccessful: %s", err)
+		return nil, fmt.Errorf("could not fetch %q from %q: %w", filepath.Base(templateURL), templateURL, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("could not fetch %q from %q: %w", filepath.Base(templateURL), templateURL, fmt.Errorf("got HTTP status %d - %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	if _, err := io.Copy(buf, resp.Body); err != nil {
+		return nil, err
+	}
+
+	klog.Infof("Attempt successful")
+	return buf.Bytes(), nil
+}
+
+func renderDockerfile(ibr *build.ImageBuildRequest, out io.Writer, copyToStdout bool) error {
+	dockerfileTemplate, err := fetchDockerfileTemplate()
+	if err != nil {
+		return fmt.Errorf("unable to fetch Dockerfile template: %w", err)
 	}
 
 	tmpl, err := template.New("dockerfile").Parse(string(dockerfileTemplate))
