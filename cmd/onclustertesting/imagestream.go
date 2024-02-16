@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/docker/distribution/reference"
+	"github.com/containers/image/v5/docker/reference"
 	imagev1 "github.com/openshift/api/image/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"

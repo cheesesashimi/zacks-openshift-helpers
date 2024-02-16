@@ -21,11 +21,11 @@ func KubeYAMLToStruct(in []byte) (string, error) {
 
 	outOpts.PackagePathToName = func(importPath string) (string, error) {
 		pathToPackageNames := map[string]string{
-			"github.com/openshift/api/config/v1": "configv1",
-			"github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1": "mcfgv1",
-			"k8s.io/api/apps/v1": "appsv1",
-			"k8s.io/api/core/v1": "corev1",
-			"k8s.io/api/rbac/v1": "rbacv1",
+			"github.com/openshift/api/config/v1":                       "configv1",
+			"github.com/openshift/api/machineconfiguration/v1":         "mcfgv1",
+			"k8s.io/api/apps/v1":                                       "appsv1",
+			"k8s.io/api/core/v1":                                       "corev1",
+			"k8s.io/api/rbac/v1":                                       "rbacv1",
 			"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1": "apiextensionsv1",
 			"k8s.io/apimachinery/pkg/api/resource":                     "resource",
 			"k8s.io/apimachinery/pkg/apis/meta/v1":                     "metav1",

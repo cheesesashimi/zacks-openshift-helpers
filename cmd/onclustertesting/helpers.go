@@ -17,10 +17,11 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
+	"github.com/openshift/machine-config-operator/pkg/apihelpers"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/openshift/machine-config-operator/test/helpers"
 
-	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/pkg/daemon/constants"
 	corev1 "k8s.io/api/core/v1"
@@ -566,8 +567,8 @@ func setStatusOnPool(cs *framework.ClientSet, targetPool string, condType mcfgv1
 			return err
 		}
 
-		newCond := mcfgv1.NewMachineConfigPoolCondition(condType, status, "", "")
-		mcfgv1.SetMachineConfigPoolCondition(&mcp.Status, *newCond)
+		newCond := apihelpers.NewMachineConfigPoolCondition(condType, status, "", "")
+		apihelpers.SetMachineConfigPoolCondition(&mcp.Status, *newCond)
 
 		_, err = cs.MachineConfigPools().UpdateStatus(context.TODO(), mcp, metav1.UpdateOptions{})
 		if err != nil {
