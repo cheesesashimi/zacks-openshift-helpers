@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
+	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 )
 
@@ -31,6 +35,7 @@ var (
 		finalImagePullspec string
 		poolName           string
 		waitForBuildInfo   bool
+		enableFeatureGate  bool
 	}
 )
 
@@ -44,6 +49,7 @@ func init() {
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", "", "Path to a pull secret YAML to use. If absent, will clone global pull secret.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pushSecretPath, "push-secret-path", "", "Path to a pull secret YAML to use.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.finalImagePullspec, "final-pullspec", "", "The final image pushspec to use for testing")
+	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableFeatureGate, "enable-feature-gate", false, "Enables the required featuregates if not already enabled.")
 }
 
 func runSetupCmd(_ *cobra.Command, _ []string) error {
@@ -70,7 +76,19 @@ func runSetupCmd(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("flags --push-secret-name and --push-secret-path cannot be combined")
 	}
 
-	return mobSetup(framework.NewClientSet(""), setupOpts.poolName, setupOpts.waitForBuildInfo)
+	cs := framework.NewClientSet("")
+
+	if err := checkForRequiredFeatureGates(cs); err != nil {
+		return err
+	}
+
+	return mobSetup(cs, setupOpts.poolName, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
+		pushSecretName:     setupOpts.pushSecretName,
+		pullSecretName:     setupOpts.pullSecretName,
+		pushSecretPath:     setupOpts.pushSecretPath,
+		pullSecretPath:     setupOpts.pullSecretPath,
+		finalImagePullspec: setupOpts.finalImagePullspec,
+	})
 }
 
 func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
@@ -80,10 +98,12 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	return inClusterMobSetup(framework.NewClientSet(""), setupOpts.poolName, setupOpts.waitForBuildInfo)
-}
+	cs := framework.NewClientSet("")
 
-func inClusterMobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool) error {
+	if err := checkForRequiredFeatureGates(cs); err != nil {
+		return err
+	}
+
 	pushSecretName, err := getBuilderPushSecretName(cs)
 	if err != nil {
 		return err
@@ -99,16 +119,24 @@ func inClusterMobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo 
 		return err
 	}
 
+	return mobSetup(cs, setupOpts.poolName, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
+		pushSecretName:     pushSecretName,
+		finalImagePullspec: pullspec,
+	})
+}
+
+func mobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool, cmOpts onClusterBuildConfigMapOpts) error {
+	if err := validateFeatureGatesEnabled(cs, "OnClusterBuild"); err != nil {
+		prompt := `You may need to enable TechPreview feature gates on your cluster. Try the following: $ oc patch featuregate/cluster --type=merge --patch='{"spec":{"featureSet":"TechPreviewNoUpgrade"}}'`
+		klog.Infof(prompt)
+		return err
+	}
+
 	if _, err := createPool(cs, targetPool); err != nil {
 		return err
 	}
 
-	opts := onClusterBuildConfigMapOpts{
-		pushSecretName:     pushSecretName,
-		finalImagePullspec: pullspec,
-	}
-
-	if err := createConfigMapsAndSecrets(cs, opts); err != nil {
+	if err := createConfigMapsAndSecrets(cs, cmOpts); err != nil {
 		return err
 	}
 
@@ -123,32 +151,74 @@ func inClusterMobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo 
 	return waitForBuildInfo(cs, targetPool)
 }
 
-func mobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool) error {
-	if _, err := createPool(cs, targetPool); err != nil {
+func checkForRequiredFeatureGates(cs *framework.ClientSet) error {
+	if err := validateFeatureGatesEnabled(cs, "OnClusterBuild"); err != nil {
+		if setupOpts.enableFeatureGate {
+			return enableFeatureGate(cs)
+		}
+
+		prompt := `You may need to enable TechPreview feature gates on your cluster. Try the following: $ oc patch featuregate/cluster --type=merge --patch='{"spec":{"featureSet":"TechPreviewNoUpgrade"}}'`
+		klog.Infof(prompt)
+		klog.Infof("Alternatively, rerun this command with the --enable-feature-gate flag")
 		return err
 	}
 
-	opts := onClusterBuildConfigMapOpts{
-		pushSecretName:     setupOpts.pushSecretName,
-		pullSecretName:     setupOpts.pullSecretName,
-		pushSecretPath:     setupOpts.pushSecretPath,
-		pullSecretPath:     setupOpts.pullSecretPath,
-		finalImagePullspec: setupOpts.finalImagePullspec,
+	return nil
+}
+
+func enableFeatureGate(cs *framework.ClientSet) error {
+	fg, err := cs.ConfigV1Interface.FeatureGates().Get(context.TODO(), "cluster", metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not enable feature gate(s): %w", err)
 	}
 
-	if err := createConfigMapsAndSecrets(cs, opts); err != nil {
-		return err
+	fg.Spec.FeatureSet = "TechPreviewNoUpgrade"
+
+	_, err = cs.ConfigV1Interface.FeatureGates().Update(context.TODO(), fg, metav1.UpdateOptions{})
+	return err
+}
+
+// Cribbed from: https://github.com/openshift/machine-config-operator/blob/master/test/helpers/utils.go
+func validateFeatureGatesEnabled(cs *framework.ClientSet, requiredFeatureGates ...configv1.FeatureGateName) error {
+	currentFeatureGates, err := cs.ConfigV1Interface.FeatureGates().Get(context.TODO(), "cluster", metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to fetch feature gates: %w", err)
 	}
 
-	if err := optInPool(cs, targetPool); err != nil {
-		return err
+	// This uses the new Go generics to construct a typed set of
+	// FeatureGateNames. Under the hood, sets are map[T]struct{}{} where
+	// only the keys matter and one cannot have duplicate keys. Perfect for our use-case!
+	enabledFeatures := sets.New[configv1.FeatureGateName]()
+	disabledFeatures := sets.New[configv1.FeatureGateName]()
+
+	// Load all of the feature gate names into our set. Duplicates will be
+	// automatically be ignored.
+	for _, currentFeatureGateDetails := range currentFeatureGates.Status.FeatureGates {
+		for _, enabled := range currentFeatureGateDetails.Enabled {
+			enabledFeatures.Insert(enabled.Name)
+		}
+
+		for _, disabled := range currentFeatureGateDetails.Disabled {
+			disabledFeatures.Insert(disabled.Name)
+		}
 	}
 
-	if !getBuildInfo {
+	// If we have all of the required feature gates, we're done!
+	if enabledFeatures.HasAll(requiredFeatureGates...) && !disabledFeatures.HasAny(requiredFeatureGates...) {
+		klog.Infof("All required feature gates %v are enabled", requiredFeatureGates)
 		return nil
 	}
 
-	return waitForBuildInfo(cs, targetPool)
+	// Now, lets validate that our FeatureGates are just disabled and not unknown.
+	requiredFeatures := sets.New[configv1.FeatureGateName](requiredFeatureGates...)
+	allFeatures := enabledFeatures.Union(disabledFeatures)
+	if !allFeatures.HasAll(requiredFeatureGates...) {
+		return fmt.Errorf("unknown FeatureGate(s): %v, available FeatureGate(s): %v", sets.List(requiredFeatures.Difference(allFeatures)), sets.List(allFeatures))
+	}
+
+	// If we don't, lets diff against what we have vs. what we want and return that information.
+	disabledRequiredFeatures := requiredFeatures.Difference(enabledFeatures)
+	return fmt.Errorf("required FeatureGate(s) %v not enabled; have: %v", sets.List(disabledRequiredFeatures), sets.List(enabledFeatures))
 }
 
 func createConfigMapsAndSecrets(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) error {
