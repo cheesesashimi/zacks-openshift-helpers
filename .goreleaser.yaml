@@ -1,89 +1,77 @@
+archives:
+- format: tar.gz
+  format_overrides:
+  - format: zip
+    goos: windows
+  name_template: '{{ .ProjectName }}_ {{- title .Os }}_ {{- if eq .Arch "amd64" }}x86_64
+    {{- else if eq .Arch "386" }}i386 {{- else }}{{ .Arch }}{{ end }} {{- if .Arm
+    }}v{{ .Arm }}{{ end }}'
 before:
   hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
-    - go test -count=1 -v ./...
+  - go mod tidy
+  - go test -count=1 -v ./...
 builds:
-  - main: ./cmd/wait-for-mcp
-    id: "wait-for-mcp"
-    binary: wait-for-mcp
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-  - main: ./cmd/mco-builder
-    id: "mco-builder"
-    binary: mco-builder
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-  - main: ./cmd/mco-push
-    id: "mco-push"
-    binary: mco-push
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-  - main: ./cmd/cluster-lifecycle
-    id: "cluster-lifecycle"
-    binary: cluster-lifecycle
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-  - main: ./cmd/onclustertesting
-    id: "onclustertesting"
-    binary: onclustertesting
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-  - main: ./cmd/run-on-all-nodes
-    id: "run-on-all-nodes"
-    binary: run-on-all-nodes
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-archives:
-  - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of uname.
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-    - goos: windows
-      format: zip
-checksum:
-  name_template: 'checksums.txt'
-snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+- binary: cluster-lifecycle
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: cluster-lifecycle
+  main: ./cmd/cluster-lifecycle
+- binary: mco-builder
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: mco-builder
+  main: ./cmd/mco-builder
+- binary: mco-push
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: mco-push
+  main: ./cmd/mco-push
+- binary: onclustertesting
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: onclustertesting
+  main: ./cmd/onclustertesting
+- binary: run-on-all-nodes
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: run-on-all-nodes
+  main: ./cmd/run-on-all-nodes
+- binary: wait-for-mcp
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: wait-for-mcp
+  main: ./cmd/wait-for-mcp
 changelog:
-  sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-
-# The lines beneath this are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/use them.
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+    - '^docs:'
+    - '^test:'
+  sort: asc
+checksum:
+  name_template: checksums.txt
+snapshot:
+  name_template: '{{ incpatch .Version }}-next'

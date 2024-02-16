@@ -29,3 +29,13 @@ lint:
 clean:
 	@echo "Cleaning up..."
 	@rm -rf $(OUTPUT_DIR)
+
+.PHONY: update-goreleaser
+update-goreleaser-config:
+	@echo "Updating goreleaser config..."
+	./hack/update-goreleaser.py $(BINARY_NAMES)
+
+.PHONY: validate-goreleaser
+validate-goreleaser-config:
+	@echo "Validating goreleaser config..."
+	@goreleaser build --snapshot --clean --single-target
