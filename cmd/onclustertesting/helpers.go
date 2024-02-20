@@ -471,32 +471,23 @@ func deleteAllMachineConfigsForPool(cs *framework.ClientSet, mcp *mcfgv1.Machine
 }
 
 func deleteBuildObjects(cs *framework.ClientSet, mcp *mcfgv1.MachineConfigPool) error {
-	selector, err := getSelectorForMCP(mcp)
-	if err != nil {
-		return err
+	requirements := []string{
+		ctrlcommon.OSImageBuildPodLabel,
+		"machineconfiguration.openshift.io/targetMachineConfigPool",
+		"machineconfiguration.openshift.io/desiredConfig",
+	}
+
+	selector := labels.NewSelector()
+
+	for _, requirement := range requirements {
+		req, err := labels.NewRequirement(requirement, selection.Exists, []string{})
+		if err != nil {
+			return fmt.Errorf("could not add requirement %q to selector: %w", requirement, err)
+		}
+		selector = selector.Add(*req)
 	}
 
 	return deleteBuildObjectsForSelector(cs, selector)
-}
-
-func getSelectorForMCP(mcp *mcfgv1.MachineConfigPool) (labels.Selector, error) {
-	key := "machineconfiguration.openshift.io/desiredConfig"
-	selector := labels.NewSelector()
-	if mcp == nil {
-		req, err := labels.NewRequirement(key, selection.Exists, []string{})
-		if err != nil {
-			return labels.NewSelector(), err
-		}
-
-		return selector.Add(*req), nil
-	}
-
-	req, err := labels.NewRequirement(key, selection.Equals, []string{mcp.Spec.Configuration.Name})
-	if err != nil {
-		return labels.NewSelector(), err
-	}
-
-	return selector.Add(*req), nil
 }
 
 func deleteBuildObjectsForSelector(cs *framework.ClientSet, selector labels.Selector) error {
