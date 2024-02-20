@@ -46,8 +46,8 @@ func init() {
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.waitForBuildInfo, "wait-for-build", false, "Wait for build info")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretName, "pull-secret-name", "", "The name of a preexisting secret to use as the pull secret. If absent, will clone global pull secret.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pushSecretName, "push-secret-name", "", "The name of a preexisting secret to use as the push secret.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", "", "Path to a pull secret YAML to use. If absent, will clone global pull secret.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.pushSecretPath, "push-secret-path", "", "Path to a pull secret YAML to use.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", "", "Path to a pull secret K8s YAML to use. If absent, will clone global pull secret.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.pushSecretPath, "push-secret-path", "", "Path to a push secret K8s YAML to use.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.finalImagePullspec, "final-pullspec", "", "The final image pushspec to use for testing")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableFeatureGate, "enable-feature-gate", false, "Enables the required featuregates if not already enabled.")
 }
@@ -126,12 +126,6 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 }
 
 func mobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool, cmOpts onClusterBuildConfigMapOpts) error {
-	if err := validateFeatureGatesEnabled(cs, "OnClusterBuild"); err != nil {
-		prompt := `You may need to enable TechPreview feature gates on your cluster. Try the following: $ oc patch featuregate/cluster --type=merge --patch='{"spec":{"featureSet":"TechPreviewNoUpgrade"}}'`
-		klog.Infof(prompt)
-		return err
-	}
-
 	if _, err := createPool(cs, targetPool); err != nil {
 		return err
 	}
