@@ -29,7 +29,7 @@ func ResolveToDigestedPullspec(pullspec, pullSecretPath string) (string, error) 
 		return "", err
 	}
 
-	canonical, err := reference.WithDigest(tagged.DockerReference(), digest)
+	canonical, err := reference.WithDigest(reference.TrimNamed(tagged.DockerReference()), digest)
 	if err != nil {
 		return "", err
 	}
