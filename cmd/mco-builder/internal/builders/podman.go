@@ -52,7 +52,7 @@ func (p *podmanBuilder) tagContainerForPush() error {
 }
 
 func (p *podmanBuilder) buildContainer() error {
-	podmanOpts := []string{"build", "-t", localPullspec, "--file", p.opts.DockerfileName, "."}
+	podmanOpts := []string{"build", "-t", localPullspec, "--network", "slirp4netns", "--file", p.opts.DockerfileName, "."}
 	if p.opts.PullSecretPath != "" {
 		podmanOpts = append([]string{"--authfile", p.opts.PullSecretPath}, podmanOpts...)
 	}
