@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"runtime"
 	"strings"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
@@ -61,11 +60,11 @@ func GetLocalBuilderTypes() sets.Set[BuilderType] {
 }
 
 func GetDefaultBuilderTypeForPlatform() BuilderType {
-	if runtime.GOOS == "linux" {
+	if _, err := exec.LookPath("podman"); err == nil {
 		return BuilderTypePodman
 	}
 
-	if runtime.GOOS == "darwin" {
+	if _, err := exec.LookPath("docker"); err == nil {
 		return BuilderTypeDocker
 	}
 
