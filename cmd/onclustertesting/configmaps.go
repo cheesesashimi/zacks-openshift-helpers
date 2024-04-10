@@ -79,6 +79,7 @@ func (o *onClusterBuildConfigMapOpts) toConfigMap() (*corev1.ConfigMap, error) {
 			build.BaseImagePullSecretNameConfigKey:  pullSecretName,
 			build.FinalImagePushSecretNameConfigKey: pushSecretName,
 			build.FinalImagePullspecConfigKey:       o.finalImagePullspec,
+			"imageBuilderType":                      "custom-pod-builder",
 		},
 	}
 
