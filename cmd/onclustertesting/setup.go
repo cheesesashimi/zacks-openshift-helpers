@@ -169,6 +169,10 @@ func enableFeatureGate(cs *framework.ClientSet) error {
 	fg.Spec.FeatureSet = "TechPreviewNoUpgrade"
 
 	_, err = cs.ConfigV1Interface.FeatureGates().Update(context.TODO(), fg, metav1.UpdateOptions{})
+	if err == nil {
+		klog.Infof("Enabled FeatureGate %s", fg.Spec.FeatureSet)
+	}
+
 	return err
 }
 
