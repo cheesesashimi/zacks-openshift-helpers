@@ -101,11 +101,12 @@ func (i *inputOpts) inferArchAndKindFromPullspec(pullspec string) error {
 		return fmt.Errorf("empty release name field for release %s", pullspec)
 	}
 
-	if strings.Contains(releaseNameStr, "okd-scos") {
+	switch {
+	case strings.Contains(releaseNameStr, "okd-scos"):
 		i.releaseKind = "okd-scos"
-	} else if strings.Contains(releaseNameStr, "okd") {
+	case strings.Contains(releaseNameStr, "okd"):
 		i.releaseKind = "okd"
-	} else {
+	default:
 		i.releaseKind = "ocp"
 	}
 
