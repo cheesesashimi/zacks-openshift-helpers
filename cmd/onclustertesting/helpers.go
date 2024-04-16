@@ -470,7 +470,7 @@ func deleteAllMachineConfigsForPool(cs *framework.ClientSet, mcp *mcfgv1.Machine
 	return nil
 }
 
-func deleteBuildObjects(cs *framework.ClientSet, mcp *mcfgv1.MachineConfigPool) error {
+func deleteBuildObjects(cs *framework.ClientSet) error {
 	requirements := []string{
 		ctrlcommon.OSImageBuildPodLabel,
 		"machineconfiguration.openshift.io/targetMachineConfigPool",

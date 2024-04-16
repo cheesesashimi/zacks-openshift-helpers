@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/openshift/machine-config-operator/pkg/controller/build"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
@@ -50,6 +52,8 @@ type onClusterBuildConfigMapOpts struct {
 	pushSecretPath     string
 	pullSecretPath     string
 	finalImagePullspec string
+	dockerfilePath     string
+	pool               string
 }
 
 func (o *onClusterBuildConfigMapOpts) shouldCloneGlobalPullSecret() bool {
@@ -129,7 +133,18 @@ func createOnClusterBuildConfigMap(cs *framework.ClientSet, opts onClusterBuildC
 	return createConfigMap(cs, cm)
 }
 
-func createCustomDockerfileConfigMap(cs *framework.ClientSet) error {
+func createCustomDockerfileConfigMap(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) error {
+	var dockerfileContents string
+	if opts.dockerfilePath != "" {
+		dockerfileBytes, err := os.ReadFile(opts.dockerfilePath)
+		if err != nil {
+			return fmt.Errorf("cannot read Dockerfile from %s: %w", opts.dockerfilePath, err)
+		}
+
+		dockerfileContents = string(dockerfileBytes)
+		klog.Infof("Using contents in Dockerfile %q for %s custom Dockerfile", opts.dockerfilePath, opts.pool)
+	}
+
 	pools, err := cs.MachineconfigurationV1Interface.MachineConfigPools().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -149,6 +164,8 @@ func createCustomDockerfileConfigMap(cs *framework.ClientSet) error {
 	for _, pool := range pools.Items {
 		cm.Data[pool.Name] = ""
 	}
+
+	cm.Data[opts.pool] = dockerfileContents
 
 	return createConfigMap(cs, cm)
 }

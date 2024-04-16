@@ -75,7 +75,7 @@ func mobTeardown(cs *framework.ClientSet, targetPool, targetDir string, extractO
 		klog.Infof("Skipping build object extraction")
 	}
 
-	if err := deleteBuildObjects(cs, mcp); err != nil {
+	if err := deleteBuildObjects(cs); err != nil {
 		return err
 	}
 

@@ -28,6 +28,7 @@ var (
 	}
 
 	setupOpts struct {
+		dockerfilePath     string
 		pullSecretPath     string
 		pushSecretPath     string
 		pullSecretName     string
@@ -49,6 +50,7 @@ func init() {
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", "", "Path to a pull secret K8s YAML to use. If absent, will clone global pull secret.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pushSecretPath, "push-secret-path", "", "Path to a push secret K8s YAML to use.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.finalImagePullspec, "final-pullspec", "", "The final image pushspec to use for testing")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.dockerfilePath, "dockerfile-path", "", "Optional Dockerfile to inject for the build.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableFeatureGate, "enable-feature-gate", false, "Enables the required featuregates if not already enabled.")
 }
 
@@ -88,6 +90,7 @@ func runSetupCmd(_ *cobra.Command, _ []string) error {
 		pushSecretPath:     setupOpts.pushSecretPath,
 		pullSecretPath:     setupOpts.pullSecretPath,
 		finalImagePullspec: setupOpts.finalImagePullspec,
+		dockerfilePath:     setupOpts.dockerfilePath,
 	})
 }
 
@@ -122,6 +125,7 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 	return mobSetup(cs, setupOpts.poolName, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
 		pushSecretName:     pushSecretName,
 		finalImagePullspec: pullspec,
+		dockerfilePath:     setupOpts.dockerfilePath,
 	})
 }
 
@@ -130,6 +134,7 @@ func mobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool, cmO
 		return err
 	}
 
+	cmOpts.pool = targetPool
 	if err := createConfigMapsAndSecrets(cs, cmOpts); err != nil {
 		return err
 	}
@@ -238,6 +243,10 @@ func createConfigMapsAndSecrets(cs *framework.ClientSet, opts onClusterBuildConf
 		}
 	}
 
+	if err := copyEtcPkiEntitlementSecret(cs); err != nil {
+		return err
+	}
+
 	secretNames := opts.getSecretNameParams()
 	if err := validateSecretsExist(cs, secretNames); err != nil {
 		return err
@@ -247,7 +256,7 @@ func createConfigMapsAndSecrets(cs *framework.ClientSet, opts onClusterBuildConf
 		return err
 	}
 
-	return createCustomDockerfileConfigMap(cs)
+	return createCustomDockerfileConfigMap(cs, opts)
 }
 
 func waitForBuildInfo(_ *framework.ClientSet, _ string) error {

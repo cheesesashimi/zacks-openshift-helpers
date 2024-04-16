@@ -28,32 +28,84 @@ func createBaseImagePullSecret(cs *framework.ClientSet, path string) error {
 // Copies the global pull secret from openshift-config/pull-secret into the MCO
 // namespace so that it can be used by the custom build pod.
 func copyGlobalPullSecret(cs *framework.ClientSet) error {
-	globalPullSecret, err := cs.CoreV1Interface.Secrets("openshift-config").Get(context.TODO(), "pull-secret", metav1.GetOptions{})
-	if err != nil {
-		return err
+	src := secretRef{
+		name:      "pull-secret",
+		namespace: "openshift-config",
 	}
 
-	secretCopy := &corev1.Secret{
+	dst := secretRef{
+		name:      globalPullSecretCloneName,
+		namespace: ctrlcommon.MCONamespace,
+	}
+
+	return copySecret(cs, src, dst)
+}
+
+func copyEtcPkiEntitlementSecret(cs *framework.ClientSet) error {
+	name := "etc-pki-entitlement"
+
+	src := secretRef{
+		name:      name,
+		namespace: "openshift-config-managed",
+	}
+
+	dst := secretRef{
+		name:      name,
+		namespace: ctrlcommon.MCONamespace,
+	}
+
+	err := copySecret(cs, src, dst)
+	if err == nil {
+		return nil
+	}
+
+	if apierrs.IsNotFound(err) {
+		klog.Warningf("Secret %s not found, cannot copy", src.String())
+		return nil
+	}
+
+	return fmt.Errorf("could not copy secret %s to %s: %w", src.String(), dst.String(), err)
+}
+
+type secretRef struct {
+	name      string
+	namespace string
+}
+
+func (s *secretRef) String() string {
+	return fmt.Sprintf("%s/%s", s.namespace, s.name)
+}
+
+func copySecret(cs *framework.ClientSet, src, dst secretRef) error {
+	originalSecret, err := cs.CoreV1Interface.Secrets(src.namespace).Get(context.TODO(), src.name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get secret %s: %w", src, err)
+	}
+
+	newSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      globalPullSecretCloneName,
-			Namespace: ctrlcommon.MCONamespace,
+			Name:      dst.name,
+			Namespace: dst.namespace,
 			Labels: map[string]string{
 				createdByOnClusterBuildsHelper: "",
 			},
 		},
-		Data: globalPullSecret.Data,
-		Type: globalPullSecret.Type,
+		Data: originalSecret.Data,
+		Type: originalSecret.Type,
 	}
 
-	err = createSecret(cs, secretCopy)
-	if err == nil {
-		klog.Infof("Cloned global pull secret %q into namespace %q as %q", "pull-secret", ctrlcommon.MCONamespace, secretCopy.Name)
-	}
-
-	return nil
+	return createSecret(cs, newSecret)
 }
 
 func createSecret(cs *framework.ClientSet, s *corev1.Secret) error { //nolint:dupl // These are secrets.
+	if !hasOurLabel(s.Labels) {
+		if s.Labels == nil {
+			s.Labels = map[string]string{}
+		}
+
+		s.Labels[createdByOnClusterBuildsHelper] = ""
+	}
+
 	_, err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 	if err == nil {
 		klog.Infof("Created secret %q in namespace %q", s.Name, ctrlcommon.MCONamespace)
@@ -167,7 +219,6 @@ func forceCleanupSecrets(cs *framework.ClientSet) error {
 	}
 
 	return nil
-
 }
 
 func getBuilderPushSecretName(cs *framework.ClientSet) (string, error) {
