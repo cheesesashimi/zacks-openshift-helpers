@@ -21,6 +21,7 @@ const (
 )
 
 type inputOpts struct {
+	enableTechPreview       bool
 	postInstallManifestPath string
 	pullSecretPath          string
 	releaseArch             string
@@ -171,11 +172,12 @@ func (i *inputOpts) validateForSetup() error {
 
 func (i *inputOpts) toInstallConfigOpts() installconfig.Opts {
 	return installconfig.Opts{
-		Arch:           i.releaseArch,
-		Kind:           i.releaseKind,
-		PullSecretPath: i.pullSecretPath,
-		SSHKeyPath:     i.sshKeyPath,
-		Prefix:         i.prefix,
+		Arch:              i.releaseArch,
+		EnableTechPreview: i.enableTechPreview,
+		Kind:              i.releaseKind,
+		PullSecretPath:    i.pullSecretPath,
+		SSHKeyPath:        i.sshKeyPath,
+		Prefix:            i.prefix,
 	}
 }
 

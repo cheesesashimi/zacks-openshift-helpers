@@ -94,12 +94,13 @@ var baseInstallConfigAMD64 []byte
 var baseInstallConfigARM64 []byte
 
 type Opts struct {
-	Prefix         string
-	Arch           string
-	Kind           string
-	SSHKeyPath     string
-	PullSecretPath string
-	Variant        string
+	Prefix            string
+	Arch              string
+	Kind              string
+	SSHKeyPath        string
+	PullSecretPath    string
+	Variant           string
+	EnableTechPreview bool
 }
 
 func (o *Opts) ClusterName() string {
@@ -222,6 +223,10 @@ func renderConfig(opts Opts) ([]byte, error) {
 
 	if err := yaml.Unmarshal(config, &parsed); err != nil {
 		return nil, err
+	}
+
+	if opts.EnableTechPreview {
+		parsed["featureSet"] = "TechPreviewNoUpgrade"
 	}
 
 	parsed["pullSecret"] = pullSecret

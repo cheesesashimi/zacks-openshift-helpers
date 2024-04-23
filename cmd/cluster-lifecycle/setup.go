@@ -37,6 +37,7 @@ func init() {
 	setupCmd.PersistentFlags().StringVar(&setupOpts.prefix, "prefix", "$USER", "Prefix to add to the cluster name; will use current system user if not set.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.workDir, "work-dir", defaultWorkDir, "The directory to use for running openshift-install. Enables vacation and persistent install mode when used in a cron job.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
+	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableTechPreview, "enable-tech-preview", false, "Enables Tech Preview features")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", sets.List(installconfig.GetSupportedVariants())))
 }
 

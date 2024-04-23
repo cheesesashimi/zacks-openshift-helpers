@@ -88,6 +88,13 @@ func TestRenderInstallConfig(t *testing.T) {
 			},
 			errExpected: true,
 		},
+		{
+			opts: Opts{
+				Arch:              amd64,
+				Kind:              ocp,
+				EnableTechPreview: true,
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -142,6 +149,13 @@ func TestRenderInstallConfig(t *testing.T) {
 				assert.Contains(t, string(out), "architecture: arm64")
 			} else if testCase.opts.Arch != multi {
 				assert.Contains(t, string(out), "architecture: "+testCase.opts.Arch)
+			}
+
+			techPreviewFeatureSet := "featureSet: TechPreviewNoUpgrade"
+			if testCase.opts.EnableTechPreview {
+				assert.Contains(t, string(out), techPreviewFeatureSet)
+			} else {
+				assert.NotContains(t, string(out), techPreviewFeatureSet)
 			}
 		})
 	}
