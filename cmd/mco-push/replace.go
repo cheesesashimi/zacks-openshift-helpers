@@ -24,6 +24,7 @@ var (
 func init() {
 	rootCmd.AddCommand(replaceCmd)
 	replaceCmd.PersistentFlags().BoolVar(&validatePullspec, "validate-pullspec", false, "Ensures that the supplied pullspec exists.")
+	replaceCmd.PersistentFlags().BoolVar(&forceRestart, "force", false, "Deletes the pods to forcefully restart the MCO.")
 }
 
 func runReplaceCmd(_ *cobra.Command, args []string) {
@@ -53,7 +54,7 @@ func replace(args []string) error {
 	}
 
 	cs := framework.NewClientSet("")
-	if err := rollout.ReplaceMCOImage(cs, pullspec); err != nil {
+	if err := rollout.ReplaceMCOImage(cs, pullspec, forceRestart); err != nil {
 		return err
 	}
 

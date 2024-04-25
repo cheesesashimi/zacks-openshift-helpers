@@ -32,7 +32,7 @@ func doRevert(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("could not remove imagestream %s: %w", imagestreamName, err)
 	}
 
-	if err := rollout.RevertToOriginalMCOImage(cs); err != nil {
+	if err := rollout.RevertToOriginalMCOImage(cs, false); err != nil {
 		return fmt.Errorf("could not revert to original MCO image: %w", err)
 	}
 

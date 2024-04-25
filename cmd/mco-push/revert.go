@@ -18,6 +18,7 @@ var (
 
 func init() {
 	rootCmd.AddCommand(revertCmd)
+	revertCmd.PersistentFlags().BoolVar(&forceRestart, "force", false, "Deletes the pods to forcefully restart the MCO.")
 }
 
 func runRevertCmd(_ *cobra.Command, _ []string) {
@@ -28,7 +29,7 @@ func runRevertCmd(_ *cobra.Command, _ []string) {
 
 func revert() error {
 	cs := framework.NewClientSet("")
-	if err := rollout.RevertToOriginalMCOImage(cs); err != nil {
+	if err := rollout.RevertToOriginalMCOImage(cs, forceRestart); err != nil {
 		return err
 	}
 

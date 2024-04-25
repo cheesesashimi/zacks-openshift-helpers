@@ -69,7 +69,7 @@ func (o *openshiftBuilder) Push() error {
 		return err
 	}
 
-	return rollout.ReplaceMCOImage(o.cs, fmt.Sprintf(is.Status.DockerImageRepository+":latest"))
+	return rollout.ReplaceMCOImage(o.cs, fmt.Sprintf(is.Status.DockerImageRepository+":latest"), false)
 }
 
 func (o *openshiftBuilder) waitForBuildToComplete() error {

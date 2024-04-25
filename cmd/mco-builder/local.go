@@ -189,7 +189,7 @@ func buildLocallyAndDeploy(cs *framework.ClientSet, buildOpts localBuildOpts) er
 		return nil
 	}
 
-	if err := rollout.ReplaceMCOImage(cs, buildOpts.finalImagePullspec); err != nil {
+	if err := rollout.ReplaceMCOImage(cs, buildOpts.finalImagePullspec, false); err != nil {
 		return err
 	}
 
@@ -268,7 +268,7 @@ func buildLocallyAndPushIntoCluster(cs *framework.ClientSet, buildOpts localBuil
 		return nil
 	}
 
-	if err := rollout.ReplaceMCOImage(cs, imagestreamPullspec); err != nil {
+	if err := rollout.ReplaceMCOImage(cs, imagestreamPullspec, false); err != nil {
 		return err
 	}
 

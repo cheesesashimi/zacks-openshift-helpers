@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"k8s.io/client-go/util/retry"
@@ -41,7 +43,7 @@ const (
 	mcoImagesJSON      string = "images.json"
 )
 
-func RevertToOriginalMCOImage(cs *framework.ClientSet) error {
+func RevertToOriginalMCOImage(cs *framework.ClientSet, forceRestart bool) error {
 	clusterVersion, err := cs.ConfigV1Interface.ClusterVersions().Get(context.TODO(), "version", metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get cluster version: %w", err)
@@ -55,7 +57,7 @@ func RevertToOriginalMCOImage(cs *framework.ClientSet) error {
 
 	klog.Infof("Found original MCO image %s for the currently running cluster release (%s)", originalMCOImage, currentRelease)
 
-	if err := ReplaceMCOImage(cs, originalMCOImage); err != nil {
+	if err := ReplaceMCOImage(cs, originalMCOImage, forceRestart); err != nil {
 		return fmt.Errorf("could not roll MCO back to image %s: %w", originalMCOImage, err)
 	}
 
@@ -66,7 +68,7 @@ func RevertToOriginalMCOImage(cs *framework.ClientSet) error {
 	return nil
 }
 
-func ReplaceMCOImage(cs *framework.ClientSet, pullspec string) error {
+func ReplaceMCOImage(cs *framework.ClientSet, pullspec string, forceRestart bool) error {
 	if err := setDeploymentReplicas(cs, cvoName, cvoNamespace, 0); err != nil {
 		return fmt.Errorf("could not scale cluster version operator down to zero: %w", err)
 	}
@@ -75,53 +77,142 @@ func ReplaceMCOImage(cs *framework.ClientSet, pullspec string) error {
 		return fmt.Errorf("could not scale machine config operator down to zero: %w", err)
 	}
 
-	_, images, err := loadMCOImagesConfigMap(cs)
-	if err != nil {
-		return fmt.Errorf("could not load or parse ConfigMap %s: %w", mcoImagesConfigMap, err)
+	if err := setPullspecOnObjects(cs, pullspec, forceRestart); err != nil {
+		return err
 	}
 
-	if images[mcoImageKey] != pullspec {
-		klog.Warningf("ConfigMap %s has pullspec %s, which will change to %s. A MachineConfig update will occur as a result.", mcoImagesConfigMap, images[mcoImageKey], pullspec)
-		if err := updateMCOConfigMap(cs, pullspec); err != nil {
-			return err
-		}
-	} else {
-		klog.Infof("ConfigMap %s already has pullspec %s. Will restart MCO components to cause an update.", mcoImagesConfigMap, pullspec)
-	}
-
-	if err := updateDaemonsets(cs, pullspec); err != nil {
-		return fmt.Errorf("could not update daemonsets: %w", err)
-	}
-
-	if err := updateDeployments(cs, pullspec); err != nil {
-		return fmt.Errorf("could not update deployments: %w", err)
-	}
-
-	if err := setDeploymentReplicas(cs, "machine-config-operator", ctrlcommon.MCONamespace, 1); err != nil {
+	if err := setDeploymentReplicas(cs, mcoName, ctrlcommon.MCONamespace, 1); err != nil {
 		return fmt.Errorf("could not scale machine config operator back up: %w", err)
 	}
 
 	return nil
 }
 
-func updateDeployments(cs *framework.ClientSet, pullspec string) error {
-	for _, name := range mcoDeployments {
-		if err := updateDeployment(cs, name, pullspec); err != nil {
-			return fmt.Errorf("could not update deployment/%s: %w", name, err)
-		}
+func RestartMCO(cs *framework.ClientSet, forceRestart bool) error {
+	if forceRestart {
+		return forceRestartMCO(cs)
 	}
 
-	return nil
+	_, images, err := loadMCOImagesConfigMap(cs)
+	if err != nil {
+		return fmt.Errorf("could not load or parse ConfigMap %s: %w", mcoImagesConfigMap, err)
+	}
+
+	return ReplaceMCOImage(cs, images[mcoImageKey], forceRestart)
 }
 
-func updateDaemonsets(cs *framework.ClientSet, pullspec string) error {
-	for _, name := range mcoDaemonsets {
-		if err := updateDaemonset(cs, name, pullspec); err != nil {
-			return fmt.Errorf("could not update daemonset/%s: %w", name, err)
-		}
+func forceRestartMCO(cs *framework.ClientSet) error {
+	eg := errgroup.Group{}
+
+	for _, name := range append(mcoDeployments, mcoDaemonsets...) {
+		name := name
+		eg.Go(func() error {
+			return forceRestartPodsForDeploymentOrDaemonset(cs, name)
+		})
 	}
 
-	return nil
+	return eg.Wait()
+}
+
+func forceRestartPodsForDeploymentOrDaemonset(cs *framework.ClientSet, name string) error {
+	podList, err := cs.CoreV1Interface.Pods(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("k8s-app==%s", name),
+	})
+
+	klog.Infof("Found (%d) pods for %s", len(podList.Items), name)
+
+	if err != nil {
+		return err
+	}
+
+	eg := errgroup.Group{}
+
+	for _, pod := range podList.Items {
+		pod := pod
+		eg.Go(func() error {
+			if err := cs.CoreV1Interface.Pods(ctrlcommon.MCONamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
+				return fmt.Errorf("could not delete pod %s: %w", pod.Name, err)
+			}
+
+			klog.Infof("Deleted pod %s", pod.Name)
+
+			return nil
+		})
+	}
+
+	return eg.Wait()
+}
+
+func setPullspecOnObjects(cs *framework.ClientSet, pullspec string, forceRestart bool) error {
+	eg := errgroup.Group{}
+
+	eg.Go(func() error {
+		if err := maybeUpdateMCOConfigMap(cs, pullspec); err != nil {
+			return fmt.Errorf("could not update MCO images ConfigMap: %w", err)
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		if err := updateDaemonsets(cs, pullspec, forceRestart); err != nil {
+			return fmt.Errorf("could not update daemonsets: %w", err)
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		if err := updateDeployments(cs, pullspec, forceRestart); err != nil {
+			return fmt.Errorf("could not update deployments: %w", err)
+		}
+
+		return nil
+	})
+
+	return eg.Wait()
+}
+
+func updateDeployments(cs *framework.ClientSet, pullspec string, forceRestart bool) error {
+	eg := errgroup.Group{}
+
+	for _, name := range mcoDeployments {
+		name := name
+		eg.Go(func() error {
+			if err := updateDeployment(cs, name, pullspec); err != nil {
+				return fmt.Errorf("could not update deployment/%s: %w", name, err)
+			}
+
+			if forceRestart {
+				return forceRestartPodsForDeploymentOrDaemonset(cs, name)
+			}
+
+			return nil
+		})
+	}
+
+	return eg.Wait()
+}
+
+func updateDaemonsets(cs *framework.ClientSet, pullspec string, forceRestart bool) error {
+	eg := errgroup.Group{}
+
+	for _, name := range mcoDaemonsets {
+		name := name
+		eg.Go(func() error {
+			if err := updateDaemonset(cs, name, pullspec); err != nil {
+				return fmt.Errorf("could not update daemonset/%s: %w", name, err)
+			}
+
+			if forceRestart {
+				return forceRestartPodsForDeploymentOrDaemonset(cs, name)
+			}
+
+			return nil
+		})
+	}
+
+	return eg.Wait()
 }
 
 func loadMCOImagesConfigMap(cs *framework.ClientSet) (*corev1.ConfigMap, map[string]string, error) {
@@ -146,6 +237,24 @@ func loadMCOImagesConfigMap(cs *framework.ClientSet) (*corev1.ConfigMap, map[str
 	}
 
 	return cm, images, nil
+}
+
+func maybeUpdateMCOConfigMap(cs *framework.ClientSet, pullspec string) error {
+	_, images, err := loadMCOImagesConfigMap(cs)
+	if err != nil {
+		return fmt.Errorf("could not load or parse ConfigMap %s: %w", mcoImagesConfigMap, err)
+	}
+
+	if images[mcoImageKey] != pullspec {
+		klog.Warningf("ConfigMap %s has pullspec %s, which will change to %s. A MachineConfig update will occur as a result.", mcoImagesConfigMap, images[mcoImageKey], pullspec)
+		if err := updateMCOConfigMap(cs, pullspec); err != nil {
+			return err
+		}
+	} else {
+		klog.Infof("ConfigMap %s already has pullspec %s. Will restart MCO components to cause an update.", mcoImagesConfigMap, pullspec)
+	}
+
+	return nil
 }
 
 func updateMCOConfigMap(cs *framework.ClientSet, pullspec string) error {
@@ -218,7 +327,6 @@ func updateDaemonset(cs *framework.ClientSet, name, pullspec string) error {
 		}
 
 		_, err = cs.AppsV1Interface.DaemonSets(ctrlcommon.MCONamespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
-
 		return err
 	})
 }
