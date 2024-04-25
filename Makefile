@@ -30,10 +30,10 @@ clean:
 	@echo "Cleaning up..."
 	@rm -rf $(OUTPUT_DIR)
 
-.PHONY: update-goreleaser
-update-goreleaser-config:
-	@echo "Updating goreleaser config..."
-	./hack/update-goreleaser.py $(BINARY_NAMES)
+.PHONY: update-configs
+update-configs:
+	@echo "Updating configs..."
+	./hack/update-configs.py $(BINARY_NAMES)
 
 .PHONY: validate-goreleaser
 validate-goreleaser-config:

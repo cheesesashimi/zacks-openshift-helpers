@@ -1,3 +1,15 @@
 *.xml
 dist/
 _output/
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+./cmd/cluster-lifecycle/cluster-lifecycle
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+./cmd/mco-builder/mco-builder
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+./cmd/mco-push/mco-push
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+./cmd/onclustertesting/onclustertesting
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+./cmd/run-on-all-nodes/run-on-all-nodes
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+./cmd/wait-for-mcp/wait-for-mcp
