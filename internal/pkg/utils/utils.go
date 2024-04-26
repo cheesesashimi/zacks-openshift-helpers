@@ -1,11 +1,13 @@
 package utils
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 
 	aggerrs "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/klog"
 )
 
 func CheckForBinaries(bins []string) error {
@@ -29,4 +31,16 @@ func ToEnvVars(in map[string]string) []string {
 	}
 
 	return out
+}
+
+func ParseFlags() {
+	flag.Set("v", "4")
+	flag.Set("logtostderr", "true")
+	flag.Parse()
+}
+
+func ParseFlagsAndPrintOpts(opts interface{}) {
+	ParseFlags()
+
+	klog.Infof("Options parsed: %+v", opts)
 }

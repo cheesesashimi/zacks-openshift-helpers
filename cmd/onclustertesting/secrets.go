@@ -12,18 +12,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 )
-
-func createBaseImagePullSecret(cs *framework.ClientSet, path string) error {
-	if path == "" {
-		klog.Infof("No pull secret path provided, will clone global pull secret")
-		return copyGlobalPullSecret(cs)
-	}
-
-	return createSecretFromFile(cs, path)
-}
 
 // Copies the global pull secret from openshift-config/pull-secret into the MCO
 // namespace so that it can be used by the custom build pod.
@@ -177,6 +167,17 @@ func createSecretFromFile(cs *framework.ClientSet, path string) error {
 	return createSecret(cs, secret)
 }
 
+func deleteSecret(cs *framework.ClientSet, name string) error {
+	err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+
+	if err != nil {
+		return fmt.Errorf("could not delete secret %s: %w", name, err)
+	}
+
+	klog.Infof("Deleted secret %q from namespace %q", name, ctrlcommon.MCONamespace)
+	return nil
+}
+
 func cleanupSecrets(cs *framework.ClientSet) error {
 	secrets, err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), getListOptsForOurLabel())
 
@@ -185,36 +186,19 @@ func cleanupSecrets(cs *framework.ClientSet) error {
 	}
 
 	for _, secret := range secrets.Items {
-		if err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).Delete(context.TODO(), secret.Name, metav1.DeleteOptions{}); err != nil {
+		if err := deleteSecret(cs, secret.Name); err != nil {
 			return err
 		}
-		klog.Infof("Deleted secret %q from namespace %q", secret.Name, ctrlcommon.MCONamespace)
 	}
 
-	return nil
-}
-
-func forceCleanupSecrets(cs *framework.ClientSet) error {
-	secrets, err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{})
-
+	secrets, err = cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	toDelete := sets.NewString("global-pull-secret-copy")
-
 	for _, secret := range secrets.Items {
 		if strings.HasSuffix(secret.Name, "-canonical") {
-			toDelete.Insert(secret.Name)
-		}
-	}
-
-	for _, secret := range secrets.Items {
-		if toDelete.Has(secret.Name) {
-			if err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).Delete(context.TODO(), secret.Name, metav1.DeleteOptions{}); err != nil {
-				return err
-			}
-			klog.Infof("Deleted secret %q from namespace %q", secret.Name, ctrlcommon.MCONamespace)
+			return deleteSecret(cs, secret.Name)
 		}
 	}
 

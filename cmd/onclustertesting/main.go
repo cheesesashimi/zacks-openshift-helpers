@@ -10,10 +10,6 @@ import (
 	versioncmd "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version"
 )
 
-const (
-	defaultLayeredPoolName string = "layered"
-)
-
 var (
 	rootCmd = &cobra.Command{
 		Use:   "onclustertesting",

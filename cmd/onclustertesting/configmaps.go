@@ -1,50 +1,14 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
-	"github.com/openshift/machine-config-operator/pkg/controller/build"
-	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
-	"github.com/openshift/machine-config-operator/test/framework"
-	corev1 "k8s.io/api/core/v1"
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
+	mcfgv1alpha1 "github.com/openshift/api/machineconfiguration/v1alpha1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 )
-
-func createConfigMap(cs *framework.ClientSet, cm *corev1.ConfigMap) error { //nolint:dupl // These are ConfigMaps.
-	_, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Create(context.TODO(), cm, metav1.CreateOptions{})
-	if err == nil {
-		klog.Infof("Created ConfigMap %q in namespace %q", cm.Name, ctrlcommon.MCONamespace)
-		return nil
-	}
-
-	if err != nil && !apierrs.IsAlreadyExists(err) {
-		return err
-	}
-
-	configmap, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Get(context.TODO(), cm.Name, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	if !hasOurLabel(configmap.Labels) {
-		klog.Infof("Found preexisting user-supplied ConfigMap %q, using as-is.", cm.Name)
-		return nil
-	}
-
-	// Delete and recreate.
-	klog.Infof("ConfigMap %q was created by us, but could be out of date. Recreating...", cm.Name)
-	err = cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Delete(context.TODO(), cm.Name, metav1.DeleteOptions{})
-	if err != nil {
-		return err
-	}
-
-	return createConfigMap(cs, cm)
-}
 
 type onClusterBuildConfigMapOpts struct {
 	pushSecretName     string
@@ -56,11 +20,33 @@ type onClusterBuildConfigMapOpts struct {
 	pool               string
 }
 
+func (o *onClusterBuildConfigMapOpts) getDockerfileContent() (string, error) {
+	if o.dockerfilePath == "" {
+		return "", fmt.Errorf("no custom Dockerfile path provided")
+	}
+
+	dockerfileBytes, err := os.ReadFile(o.dockerfilePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot read Dockerfile from %s: %w", o.dockerfilePath, err)
+	}
+
+	klog.Infof("Using contents in Dockerfile %q for %s custom Dockerfile", o.dockerfilePath, o.pool)
+	return string(dockerfileBytes), nil
+}
+
+func (o *onClusterBuildConfigMapOpts) maybeGetDockerfileContent() (string, error) {
+	if o.dockerfilePath == "" {
+		return "", nil
+	}
+
+	return o.getDockerfileContent()
+}
+
 func (o *onClusterBuildConfigMapOpts) shouldCloneGlobalPullSecret() bool {
 	return isNoneSet(o.pullSecretName, o.pullSecretPath)
 }
 
-func (o *onClusterBuildConfigMapOpts) toConfigMap() (*corev1.ConfigMap, error) {
+func (o *onClusterBuildConfigMapOpts) toMachineOSConfig() (*mcfgv1alpha1.MachineOSConfig, error) {
 	pushSecretName, err := o.getPushSecretName()
 	if err != nil {
 		return nil, err
@@ -71,23 +57,49 @@ func (o *onClusterBuildConfigMapOpts) toConfigMap() (*corev1.ConfigMap, error) {
 		return nil, err
 	}
 
-	cm := &corev1.ConfigMap{
+	dockerfileContents, err := o.maybeGetDockerfileContent()
+	if err != nil {
+		return nil, err
+	}
+
+	mosc := &mcfgv1alpha1.MachineOSConfig{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      build.OnClusterBuildConfigMapName,
-			Namespace: ctrlcommon.MCONamespace,
+			Name: o.pool,
 			Labels: map[string]string{
 				createdByOnClusterBuildsHelper: "",
 			},
 		},
-		Data: map[string]string{
-			build.BaseImagePullSecretNameConfigKey:  pullSecretName,
-			build.FinalImagePushSecretNameConfigKey: pushSecretName,
-			build.FinalImagePullspecConfigKey:       o.finalImagePullspec,
-			"imageBuilderType":                      "custom-pod-builder",
+		Spec: mcfgv1alpha1.MachineOSConfigSpec{
+			MachineConfigPool: mcfgv1alpha1.MachineConfigPoolReference{
+				Name: o.pool,
+			},
+			BuildInputs: mcfgv1alpha1.BuildInputs{
+				BaseImagePullSecret: mcfgv1alpha1.ImageSecretObjectReference{
+					Name: globalPullSecretCloneName,
+				},
+				RenderedImagePushSecret: mcfgv1alpha1.ImageSecretObjectReference{
+					Name: pushSecretName,
+				},
+				RenderedImagePushspec: o.finalImagePullspec,
+				ImageBuilder: &mcfgv1alpha1.MachineOSImageBuilder{
+					ImageBuilderType: mcfgv1alpha1.PodBuilder,
+				},
+				Containerfile: []mcfgv1alpha1.MachineOSContainerfile{
+					{
+						ContainerfileArch: mcfgv1alpha1.NoArch,
+						Content:           dockerfileContents,
+					},
+				},
+			},
+			BuildOutputs: mcfgv1alpha1.BuildOutputs{
+				CurrentImagePullSecret: mcfgv1alpha1.ImageSecretObjectReference{
+					Name: pullSecretName,
+				},
+			},
 		},
 	}
 
-	return cm, nil
+	return mosc, nil
 }
 
 func (o *onClusterBuildConfigMapOpts) getPullSecretName() (string, error) {
@@ -122,89 +134,4 @@ func (o *onClusterBuildConfigMapOpts) getSecretNameParams() []string {
 	}
 
 	return secretNames
-}
-
-func createOnClusterBuildConfigMap(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) error {
-	cm, err := opts.toConfigMap()
-	if err != nil {
-		return err
-	}
-
-	return createConfigMap(cs, cm)
-}
-
-func createCustomDockerfileConfigMap(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) error {
-	var dockerfileContents string
-	if opts.dockerfilePath != "" {
-		dockerfileBytes, err := os.ReadFile(opts.dockerfilePath)
-		if err != nil {
-			return fmt.Errorf("cannot read Dockerfile from %s: %w", opts.dockerfilePath, err)
-		}
-
-		dockerfileContents = string(dockerfileBytes)
-		klog.Infof("Using contents in Dockerfile %q for %s custom Dockerfile", opts.dockerfilePath, opts.pool)
-	}
-
-	pools, err := cs.MachineconfigurationV1Interface.MachineConfigPools().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "on-cluster-build-custom-dockerfile",
-			Namespace: ctrlcommon.MCONamespace,
-			Labels: map[string]string{
-				createdByOnClusterBuildsHelper: "",
-			},
-		},
-		Data: map[string]string{},
-	}
-
-	for _, pool := range pools.Items {
-		cm.Data[pool.Name] = ""
-	}
-
-	cm.Data[opts.pool] = dockerfileContents
-
-	return createConfigMap(cs, cm)
-}
-
-func cleanupConfigMaps(cs *framework.ClientSet) error {
-	configMaps, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).List(context.TODO(), getListOptsForOurLabel())
-
-	if err != nil {
-		return err
-	}
-
-	for _, configMap := range configMaps.Items {
-		if err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Delete(context.TODO(), configMap.Name, metav1.DeleteOptions{}); err != nil {
-			return err
-		}
-		klog.Infof("Deleted ConfigMap %q from namespace %q", configMap.Name, ctrlcommon.MCONamespace)
-	}
-
-	return nil
-}
-
-func forceCleanupConfigMaps(cs *framework.ClientSet) error {
-	configMaps, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{})
-
-	if err != nil {
-		return err
-	}
-
-	toDelete := sets.NewString("on-cluster-build-config", "on-cluster-build-custom-dockerfile")
-
-	for _, configMap := range configMaps.Items {
-		if toDelete.Has(configMap.Name) {
-			if err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Delete(context.TODO(), configMap.Name, metav1.DeleteOptions{}); err != nil {
-				return err
-			}
-
-			klog.Infof("Deleted ConfigMap %q from namespace %q", configMap.Name, ctrlcommon.MCONamespace)
-		}
-	}
-
-	return nil
 }

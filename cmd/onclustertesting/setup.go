@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -55,7 +57,7 @@ func init() {
 }
 
 func runSetupCmd(_ *cobra.Command, _ []string) error {
-	common(setupOpts)
+	utils.ParseFlags()
 
 	// TODO: Figure out how to use cobra flags for validation directly.
 	if err := errIfNotSet(setupOpts.poolName, "pool"); err != nil {
@@ -84,18 +86,19 @@ func runSetupCmd(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	return mobSetup(cs, setupOpts.poolName, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
+	return mobSetup(cs, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
 		pushSecretName:     setupOpts.pushSecretName,
 		pullSecretName:     setupOpts.pullSecretName,
 		pushSecretPath:     setupOpts.pushSecretPath,
 		pullSecretPath:     setupOpts.pullSecretPath,
 		finalImagePullspec: setupOpts.finalImagePullspec,
 		dockerfilePath:     setupOpts.dockerfilePath,
+		pool:               setupOpts.poolName,
 	})
 }
 
 func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
-	common(setupOpts)
+	utils.ParseFlags()
 
 	if err := errIfNotSet(setupOpts.poolName, "pool"); err != nil {
 		return err
@@ -122,24 +125,36 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	return mobSetup(cs, setupOpts.poolName, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
+	return mobSetup(cs, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
 		pushSecretName:     pushSecretName,
 		finalImagePullspec: pullspec,
 		dockerfilePath:     setupOpts.dockerfilePath,
+		pool:               setupOpts.poolName,
 	})
 }
 
-func mobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool, cmOpts onClusterBuildConfigMapOpts) error {
-	if _, err := createPool(cs, targetPool); err != nil {
+func mobSetup(cs *framework.ClientSet, getBuildInfo bool, cmOpts onClusterBuildConfigMapOpts) error {
+	eg := errgroup.Group{}
+
+	eg.Go(func() error {
+		_, err := createPool(cs, cmOpts.pool)
+		return err
+	})
+
+	eg.Go(func() error {
+		return createSecrets(cs, cmOpts)
+	})
+
+	if err := eg.Wait(); err != nil {
 		return err
 	}
 
-	cmOpts.pool = targetPool
-	if err := createConfigMapsAndSecrets(cs, cmOpts); err != nil {
+	mosc, err := cmOpts.toMachineOSConfig()
+	if err != nil {
 		return err
 	}
 
-	if err := optInPool(cs, targetPool); err != nil {
+	if err := createMachineOSConfig(cs, mosc); err != nil {
 		return err
 	}
 
@@ -147,7 +162,7 @@ func mobSetup(cs *framework.ClientSet, targetPool string, getBuildInfo bool, cmO
 		return nil
 	}
 
-	return waitForBuildInfo(cs, targetPool)
+	return waitForBuildInfo(cs, cmOpts.pool)
 }
 
 func checkForRequiredFeatureGates(cs *framework.ClientSet) error {
@@ -224,26 +239,45 @@ func validateFeatureGatesEnabled(cs *framework.ClientSet, requiredFeatureGates .
 	return fmt.Errorf("required FeatureGate(s) %v not enabled; have: %v", sets.List(disabledRequiredFeatures), sets.List(enabledFeatures))
 }
 
-func createConfigMapsAndSecrets(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) error {
-	if opts.shouldCloneGlobalPullSecret() {
-		if err := copyGlobalPullSecret(cs); err != nil {
-			return nil
-		}
-	}
+func createSecrets(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) error {
+	eg := errgroup.Group{}
 
-	if opts.pushSecretPath != "" {
-		if err := createSecretFromFile(cs, opts.pushSecretPath); err != nil {
-			return err
+	eg.Go(func() error {
+		if opts.shouldCloneGlobalPullSecret() {
+			if err := copyGlobalPullSecret(cs); err != nil {
+				// Not sure why this snarfs any errors from this process.
+				return nil
+			}
 		}
-	}
 
-	if opts.pullSecretPath != "" {
-		if err := createSecretFromFile(cs, opts.pullSecretPath); err != nil {
-			return err
+		return nil
+	})
+
+	eg.Go(func() error {
+		if opts.pushSecretPath != "" {
+			if err := createSecretFromFile(cs, opts.pushSecretPath); err != nil {
+				return err
+			}
 		}
-	}
 
-	if err := copyEtcPkiEntitlementSecret(cs); err != nil {
+		return nil
+	})
+
+	eg.Go(func() error {
+		if opts.pullSecretPath != "" {
+			if err := createSecretFromFile(cs, opts.pullSecretPath); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		return copyEtcPkiEntitlementSecret(cs)
+	})
+
+	if err := eg.Wait(); err != nil {
 		return err
 	}
 
@@ -252,11 +286,7 @@ func createConfigMapsAndSecrets(cs *framework.ClientSet, opts onClusterBuildConf
 		return err
 	}
 
-	if err := createOnClusterBuildConfigMap(cs, opts); err != nil {
-		return err
-	}
-
-	return createCustomDockerfileConfigMap(cs, opts)
+	return nil
 }
 
 func waitForBuildInfo(_ *framework.ClientSet, _ string) error {

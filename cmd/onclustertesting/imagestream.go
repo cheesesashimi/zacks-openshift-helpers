@@ -53,14 +53,14 @@ func createImagestream(cs *framework.ClientSet, name string) error {
 		},
 	}
 
-	_, err := cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).Create(context.TODO(), is, metav1.CreateOptions{})
+	created, err := cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).Create(context.TODO(), is, metav1.CreateOptions{})
 	if err == nil {
 		klog.Infof("Imagestream %q created", name)
 		return nil
 	}
 
-	if apierrs.IsAlreadyExists(err) {
-		klog.Infof("Imagestream %q already exists, will re-use", name)
+	if apierrs.IsAlreadyExists(err) && hasOurLabel(created.Labels) {
+		klog.Infof("Imagestream %q already exists and has our labels, will re-use", name)
 		return nil
 	}
 

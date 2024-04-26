@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/openshift/machine-config-operator/test/helpers"
 	"github.com/spf13/cobra"
@@ -35,7 +35,7 @@ func init() {
 }
 
 func runOptInCmd(_ *cobra.Command, _ []string) error {
-	common(optInOpts)
+	utils.ParseFlags()
 
 	if isEmpty(optInOpts.poolName) {
 		return fmt.Errorf("no pool name provided")
@@ -49,18 +49,21 @@ func runOptInCmd(_ *cobra.Command, _ []string) error {
 }
 
 func optInNode(cs *framework.ClientSet, nodeName, targetPool string) error {
+	mcp, err := cs.MachineConfigPools().Get(context.TODO(), targetPool, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	klog.Infof("Found pool %q", targetPool)
+
+	mosc, err := getMachineOSConfigForPool(cs, mcp)
+	if err != nil {
+		return err
+	}
+
+	klog.Infof("Found MachineOSConfig %s for pool", mosc.Name)
+
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		mcp, err := cs.MachineConfigPools().Get(context.TODO(), targetPool, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		klog.Infof("Found pool %q", targetPool)
-
-		if _, ok := mcp.Labels[ctrlcommon.LayeringEnabledPoolLabel]; !ok {
-			return fmt.Errorf("Pool %q is not opted into layering", mcp.Name)
-		}
-
 		node, err := cs.CoreV1Interface.Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 		if err != nil {
 			return err

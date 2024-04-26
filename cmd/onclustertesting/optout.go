@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/openshift/machine-config-operator/test/helpers"
 	"github.com/spf13/cobra"
@@ -30,12 +31,12 @@ var (
 func init() {
 	rootCmd.AddCommand(optOutCmd)
 	optOutCmd.PersistentFlags().StringVar(&optOutOpts.poolName, "pool", defaultLayeredPoolName, "Pool name")
-	optOutCmd.PersistentFlags().StringVar(&optOutOpts.nodeName, "node", "", "MachineConfig name")
+	optOutCmd.PersistentFlags().StringVar(&optOutOpts.nodeName, "node", "", "Node name")
 	optOutCmd.PersistentFlags().BoolVar(&optOutOpts.force, "force", false, "Forcefully opt node out")
 }
 
 func runOptOutCmd(_ *cobra.Command, _ []string) error {
-	common(optOutOpts)
+	utils.ParseFlags()
 
 	if !optOutOpts.force && isEmpty(optOutOpts.poolName) {
 		return fmt.Errorf("no pool name provided")
@@ -49,13 +50,13 @@ func runOptOutCmd(_ *cobra.Command, _ []string) error {
 }
 
 func optOutNode(cs *framework.ClientSet, nodeName, poolName string, force bool) error {
+	workerMCP, err := cs.MachineConfigPools().Get(context.TODO(), "worker", metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		node, err := cs.CoreV1Interface.Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		workerMCP, err := cs.MachineConfigPools().Get(context.TODO(), "worker", metav1.GetOptions{})
 		if err != nil {
 			return err
 		}

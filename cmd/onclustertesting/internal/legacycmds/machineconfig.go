@@ -1,10 +1,13 @@
-package main
+package legacycmds
 
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
+	"github.com/ghodss/yaml"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 
 	ign3types "github.com/coreos/ignition/v2/config/v3_4/types"
@@ -19,13 +22,6 @@ import (
 )
 
 var (
-	machineConfigCmd = &cobra.Command{
-		Use:   "machineconfig",
-		Short: "Creates a MachineConfig in a layered MachineConfigPool to cause a build",
-		Long:  "",
-		RunE:  runMachineConfigCmd,
-	}
-
 	machineConfigOpts struct {
 		poolName      string
 		machineConfig string
@@ -34,16 +30,25 @@ var (
 	}
 )
 
-func init() {
-	rootCmd.AddCommand(machineConfigCmd)
-	machineConfigCmd.PersistentFlags().StringVar(&machineConfigOpts.poolName, "pool", defaultLayeredPoolName, "Pool name to target")
+func MachineConfigCommand() *cobra.Command {
+	machineConfigCmd := &cobra.Command{
+		Use:   "machineconfig",
+		Short: "Creates a MachineConfig in a layered MachineConfigPool to cause a build",
+		Long:  "",
+		RunE:  runMachineConfigCmd,
+	}
+
+	machineConfigCmd.PersistentFlags().StringVar(&machineConfigOpts.poolName, "pool", DefaultLayeredPoolName, "Pool name to target")
 	machineConfigCmd.PersistentFlags().StringVar(&machineConfigOpts.machineConfig, "machineconfig", "", "MachineConfig name to create")
 	machineConfigCmd.PersistentFlags().BoolVar(&machineConfigOpts.sshMC, "ssh-config", false, "Creates a MachineConfig that adds an SSH key to avoid reboots")
 	machineConfigCmd.PersistentFlags().BoolVar(&machineConfigOpts.dryRun, "dry-run", false, "Dump the MachineConfig to stdout instead of applying it")
+
+	return machineConfigCmd
+
 }
 
 func runMachineConfigCmd(_ *cobra.Command, _ []string) error {
-	common(machineConfigOpts)
+	utils.ParseFlags()
 
 	if extractOpts.poolName == "" {
 		return fmt.Errorf("no pool name provided")
@@ -57,7 +62,7 @@ func runMachineConfigCmd(_ *cobra.Command, _ []string) error {
 func createMachineConfig(cs *framework.ClientSet, targetPool, name string) error {
 	mc := getMachineConfig(machineConfigOpts.machineConfig, machineConfigOpts.poolName, machineConfigOpts.sshMC)
 	mc.Labels = map[string]string{
-		createdByOnClusterBuildsHelper: "",
+		CreatedByOnClusterBuildsHelper: "",
 	}
 
 	if machineConfigOpts.dryRun {
@@ -76,7 +81,7 @@ func createMachineConfig(cs *framework.ClientSet, targetPool, name string) error
 
 	klog.Infof("Created MachineConfig %q targeting pool %q", name, targetPool)
 
-	renderedConfig, err := waitForRenderedConfigs(cs, targetPool, name)
+	renderedConfig, err := WaitForRenderedConfigs(cs, targetPool, name)
 	if err != nil {
 		return err
 	}
@@ -122,4 +127,14 @@ func getSSHMachineConfig(mcName, mcpName, sshKeyContent string) *mcfgv1.MachineC
 			},
 		},
 	}
+}
+
+func dumpYAMLToStdout(in interface{}) error {
+	out, err := yaml.Marshal(in)
+	if err != nil {
+		return err
+	}
+
+	_, err = os.Stdout.Write(out)
+	return err
 }

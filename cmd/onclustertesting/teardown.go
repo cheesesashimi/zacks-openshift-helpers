@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
-	"io/fs"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -22,57 +21,47 @@ var (
 
 	teardownOpts struct {
 		poolName string
-		extract  bool
 		dir      string
-		force    bool
 	}
 )
 
 func init() {
 	rootCmd.AddCommand(teardownCmd)
 	teardownCmd.PersistentFlags().StringVar(&teardownOpts.poolName, "pool", defaultLayeredPoolName, "Pool name to teardown")
-	teardownCmd.PersistentFlags().BoolVar(&teardownOpts.extract, "extract-objects", false, "Extract and store build objects on disk before teardown")
 	teardownCmd.PersistentFlags().StringVar(&teardownOpts.dir, "dir", "", "Dir to store extract build objects")
-	teardownCmd.PersistentFlags().BoolVar(&teardownOpts.force, "force", false, "Removes all on-cluster build related objects even if not created by this CLI tool")
 }
 
 func runTeardownCmd(_ *cobra.Command, _ []string) error {
-	common(teardownOpts)
+	utils.ParseFlags()
 
 	if teardownOpts.poolName == "" {
 		klog.Fatalln("No pool name provided!")
 	}
 
-	targetDir, err := getDir(teardownOpts.dir)
-	if err != nil {
-		return err
-	}
-
-	return mobTeardown(framework.NewClientSet(""), teardownOpts.poolName, targetDir, teardownOpts.extract)
+	return mobTeardown(framework.NewClientSet(""), teardownOpts.poolName)
 }
 
-func mobTeardown(cs *framework.ClientSet, targetPool, targetDir string, extractObjects bool) error {
+func mobTeardown(cs *framework.ClientSet, targetPool string) error {
 	mcp, err := cs.MachineConfigPools().Get(context.TODO(), targetPool, metav1.GetOptions{})
 	if err != nil && !apierrs.IsNotFound(err) {
 		return err
 	}
 
-	if apierrs.IsNotFound(err) {
-		klog.Infof("Pool %s not found", targetPool)
+	if err == nil && !hasOurLabel(mcp.Labels) {
+		klog.Warningf("Provided MachineConfigPool %q was not created by this program, will ignore", mcp.Name)
+		klog.Infof("Will do a label query searching for %q", createdByOnClusterBuildsHelper)
+
 		mcp = nil
 	}
 
-	if extractObjects {
-		klog.Infof("Extracting build objects (if they exist) to %s", targetDir)
-		if err := extractBuildObjects(cs, mcp, targetDir); err != nil {
-			if errors.Is(err, fs.ErrNotExist) || apierrs.IsNotFound(err) {
-				klog.Warningf("Recovered from: %s", err)
-			} else {
-				return err
-			}
+	if apierrs.IsNotFound(err) {
+		if targetPool == defaultLayeredPoolName {
+			klog.Infof("Default MachineConfigPool %q not found, maybe you forgot to provide the pool name?", defaultLayeredPoolName)
+		} else {
+			klog.Infof("Provided MachineConfigPool %q not found, maybe you provided the wrong pool name?", targetPool)
 		}
-	} else {
-		klog.Infof("Skipping build object extraction")
+
+		mcp = nil
 	}
 
 	if err := deleteBuildObjects(cs); err != nil {
@@ -85,48 +74,23 @@ func mobTeardown(cs *framework.ClientSet, targetPool, targetDir string, extractO
 		}
 	}
 
-	if err := deleteAllNonStandardPools(cs); err != nil {
+	if err := deleteAllPoolsWithOurLabel(cs); err != nil {
 		return err
 	}
 
-	if mcp != nil {
-		if err := deleteAllMachineConfigsForPool(cs, mcp); err != nil {
-			return err
-		}
+	if err := deleteMachineOSBuilds(cs); err != nil {
+		return err
 	}
 
-	if teardownOpts.force {
-		return forceCleanup(cs)
+	if err := deleteMachineOSConfigs(cs); err != nil {
+		return err
 	}
 
-	return normalCleanup(cs)
-}
-
-func normalCleanup(cs *framework.ClientSet) error {
-	if err := cleanupConfigMaps(cs); err != nil {
+	if err := cleanupImagestreams(cs); err != nil {
 		return err
 	}
 
 	if err := cleanupSecrets(cs); err != nil {
-		return err
-	}
-
-	return cleanupImagestreams(cs)
-}
-
-func forceCleanup(cs *framework.ClientSet) error {
-	if err := forceCleanupConfigMaps(cs); err != nil {
-		klog.Errorf("could not force clean ConfigMaps")
-		return err
-	}
-
-	if err := forceCleanupSecrets(cs); err != nil {
-		klog.Errorf("could not force clean Secrets")
-		return err
-	}
-
-	if err := deleteImagestream(cs, "os-image"); err != nil {
-		klog.Errorf("could not force clean ImageStream 'os-image'")
 		return err
 	}
 
