@@ -55,7 +55,7 @@ def update_gitignore_file(names):
     is_updated = False
     with open(gitignore, "a") as gitignore_file:
         for name in names:
-            cmd_name = f"./cmd/{name}/{name}"
+            cmd_name = f"cmd/{name}/{name}"
             if cmd_name not in gitignore_content:
                 is_updated = True
                 print(f"Added {cmd_name} to {gitignore}")
