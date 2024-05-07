@@ -18,7 +18,11 @@ func newPodmanBuilder(opts Opts) Builder {
 }
 
 func (p *podmanBuilder) Build() error {
-	if err := makeBinaries(p.opts.RepoRoot); err != nil {
+	if err := validateLocalBuilderMode(p.opts); err != nil {
+		return err
+	}
+
+	if err := maybeMakeBinaries(p.opts); err != nil {
 		return err
 	}
 
@@ -52,7 +56,7 @@ func (p *podmanBuilder) tagContainerForPush() error {
 }
 
 func (p *podmanBuilder) buildContainer() error {
-	podmanOpts := []string{"build", "-t", localPullspec, "--network", "slirp4netns", "--file", p.opts.DockerfileName, "."}
+	podmanOpts := []string{"build", "-t", localPullspec, "--network", "slirp4netns", "--jobs", "3", "--file", p.opts.DockerfileName, p.opts.RepoRoot}
 	if p.opts.PullSecretPath != "" {
 		podmanOpts = append([]string{"--authfile", p.opts.PullSecretPath}, podmanOpts...)
 	}

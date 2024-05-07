@@ -42,6 +42,12 @@ func NewOpenshiftBuilder(cs *framework.ClientSet, opts OpenshiftBuilderOpts) Bui
 	}
 }
 
+// TODO: Replace this with a custom build pod that does the following:
+// - Starts a pod running quay.io/buildah/stable:latest
+// - Copies the contents of ones local repo root into the started pod using something like:  tar --exclude "./_output" -cf - . | oc exec -i -n openshift-machine-config-operator buildah -- tar xf - -C /root/machine-config-operator
+// - Starts the build
+// - Waits for the build to complete
+// - Deletes the pod at the end of the build
 func (o *openshiftBuilder) Build() error {
 	_, err := o.cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).Get(context.TODO(), o.opts.ImageStreamName, metav1.GetOptions{})
 	if err != nil {

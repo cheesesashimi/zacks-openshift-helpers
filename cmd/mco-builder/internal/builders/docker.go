@@ -20,7 +20,11 @@ func newDockerBuilder(opts Opts) Builder {
 }
 
 func (d *dockerBuilder) Build() error {
-	if err := makeBinaries(d.opts.RepoRoot); err != nil {
+	if err := validateLocalBuilderMode(d.opts); err != nil {
+		return err
+	}
+
+	if err := maybeMakeBinaries(d.opts); err != nil {
 		return err
 	}
 
@@ -50,7 +54,7 @@ func (d *dockerBuilder) Push() error {
 }
 
 func (d *dockerBuilder) buildContainer() error {
-	dockerOpts := []string{"build", "-t", localPullspec, "--file", d.opts.DockerfileName, "."}
+	dockerOpts := []string{"build", "-t", localPullspec, "--file", d.opts.DockerfileName, d.opts.RepoRoot}
 
 	if d.opts.PullSecretPath != "" {
 		pullSecretDir, cleanupFunc, err := d.getConfigDir(d.opts.PullSecretPath)

@@ -147,13 +147,13 @@ func NewMCORepo(repoRoot string, mode BuildMode) (*MCORepo, error) {
 		return nil, fmt.Errorf("could not read repo dockerfile: %w", err)
 	}
 
+	if mode == BuildModeNormal {
+		return newMCORepoWithNormalBuildMode(repoRoot)
+	}
+
 	version, err := inferOCPVersionFromDockerfile(repoDockerfile)
 	if err != nil {
 		return nil, fmt.Errorf("could not infer version from repo dockerfile: %w", err)
-	}
-
-	if mode == BuildModeNormal {
-		return newMCORepoWithNormalBuildMode(repoRoot)
 	}
 
 	versions := sets.New[string](supportedVersions()...)

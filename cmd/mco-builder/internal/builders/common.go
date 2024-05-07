@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/repo"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
@@ -37,6 +38,7 @@ type Opts struct {
 	PushSecretPath string
 	FinalPullspec  string
 	DockerfileName string
+	BuildMode      repo.BuildMode
 }
 
 func (o *Opts) isDirectClusterPush() bool {
@@ -69,6 +71,16 @@ func GetDefaultBuilderTypeForPlatform() BuilderType {
 	}
 
 	return BuilderTypeUnknown
+}
+
+func maybeMakeBinaries(opts Opts) error {
+	if opts.BuildMode == repo.BuildModeFast {
+		klog.Infof("Build mode %q selected, pre-building binaries using native tooling", repo.BuildModeFast)
+		return makeBinaries(opts.RepoRoot)
+	}
+
+	klog.Infof("Build mode %q selected, using container builder to build binaries", repo.BuildModeNormal)
+	return nil
 }
 
 func makeBinaries(repoRoot string) error {
@@ -143,4 +155,16 @@ func pushWithSkopeo(opts Opts, builder BuilderType) error {
 	}
 
 	return nil
+}
+
+func validateLocalBuilderMode(opts Opts) error {
+	validLocalModes := []repo.BuildMode{repo.BuildModeNormal, repo.BuildModeFast}
+
+	for _, mode := range validLocalModes {
+		if opts.BuildMode == mode {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("invalid build mode %s, valid modes: %v", opts.BuildMode, validLocalModes)
 }

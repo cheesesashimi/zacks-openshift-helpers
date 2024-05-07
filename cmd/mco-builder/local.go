@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/mco-builder/internal/builders"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/containers"
@@ -14,6 +16,7 @@ import (
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	aggerrs "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -130,6 +133,11 @@ func runLocalCmd(_ *cobra.Command, _ []string) error {
 
 	cs := framework.NewClientSet("")
 
+	if err := validateLocalAndClusterArches(cs); err != nil {
+		// TODO: Return the error here instead. Need to validate GOARCH against Linux ARM64 and Darwin ARM64.
+		klog.Warning(err)
+	}
+
 	if opts.directPush {
 		return buildLocallyAndPushIntoCluster(cs, opts)
 	}
@@ -165,6 +173,7 @@ func buildLocallyAndDeploy(cs *framework.ClientSet, buildOpts localBuildOpts) er
 		FinalPullspec:  buildOpts.finalImagePullspec,
 		PushSecretPath: buildOpts.finalImagePushSecretPath,
 		DockerfileName: r.DockerfilePath(),
+		BuildMode:      repo.BuildMode(opts.buildMode),
 	}
 
 	builder := builders.NewLocalBuilder(opts, buildOpts.getBuilderType())
@@ -244,6 +253,7 @@ func buildLocallyAndPushIntoCluster(cs *framework.ClientSet, buildOpts localBuil
 		FinalPullspec:  extPullspec,
 		PushSecretPath: secretPath,
 		DockerfileName: r.DockerfilePath(),
+		BuildMode:      repo.BuildMode(opts.buildMode),
 	}
 
 	builder := builders.NewLocalBuilder(opts, buildOpts.getBuilderType())
@@ -273,5 +283,23 @@ func buildLocallyAndPushIntoCluster(cs *framework.ClientSet, buildOpts localBuil
 	}
 
 	klog.Infof("New MCO rollout complete!")
+	return nil
+}
+
+func validateLocalAndClusterArches(cs *framework.ClientSet) error {
+	nodes, err := cs.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	// TODO: Handle multiarch cases.
+	clusterArch := nodes.Items[0].Status.NodeInfo.Architecture
+
+	if clusterArch != runtime.GOARCH {
+		return fmt.Errorf("local (%s) / cluster (%s) architecture mismatch", runtime.GOARCH, clusterArch)
+	}
+
+	klog.Infof("Local (%s) arch matches cluster (%s)", runtime.GOARCH, clusterArch)
+
 	return nil
 }
