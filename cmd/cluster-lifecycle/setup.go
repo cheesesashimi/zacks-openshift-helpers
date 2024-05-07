@@ -14,19 +14,18 @@ import (
 	"k8s.io/klog"
 )
 
-var (
-	setupCmd = &cobra.Command{
+func init() {
+	setupOpts := inputOpts{}
+
+	setupCmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Brings up an OpenShift cluster for testing purposes",
 		Long:  "",
-		Run:   runSetupCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runSetup(setupOpts)
+		},
 	}
 
-	setupOpts = inputOpts{}
-)
-
-func init() {
-	rootCmd.AddCommand(setupCmd)
 	setupCmd.PersistentFlags().StringVar(&setupOpts.postInstallManifestPath, "post-install-manifests", "", "Directory containing K8s manifests to apply after successful installation.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", defaultPullSecretPath, "Path to a pull secret that can pull from registry.ci.openshift.org")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.releasePullspec, "release-pullspec", "", "An arbitrary release pullspec to spin up.")
@@ -39,15 +38,11 @@ func init() {
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableTechPreview, "enable-tech-preview", false, "Enables Tech Preview features")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", sets.List(installconfig.GetSupportedVariants())))
+
+	rootCmd.AddCommand(setupCmd)
 }
 
-func runSetupCmd(_ *cobra.Command, _ []string) {
-	if err := runSetup(); err != nil {
-		klog.Fatalln(err)
-	}
-}
-
-func runSetup() error {
+func runSetup(setupOpts inputOpts) error {
 	_, err := exec.LookPath("oc")
 	if err != nil {
 		return fmt.Errorf("missing required binary oc")

@@ -11,34 +11,37 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	teardownCmd = &cobra.Command{
+type teardownOpts struct {
+	poolName string
+	dir      string
+}
+
+func init() {
+	teardownOpts := teardownOpts{}
+
+	teardownCmd := &cobra.Command{
 		Use:   "teardown",
 		Short: "Tears down the pool for on-cluster build testing",
 		Long:  "",
-		RunE:  runTeardownCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runTeardownCmd(teardownOpts)
+		},
 	}
 
-	teardownOpts struct {
-		poolName string
-		dir      string
-	}
-)
-
-func init() {
-	rootCmd.AddCommand(teardownCmd)
 	teardownCmd.PersistentFlags().StringVar(&teardownOpts.poolName, "pool", defaultLayeredPoolName, "Pool name to teardown")
 	teardownCmd.PersistentFlags().StringVar(&teardownOpts.dir, "dir", "", "Dir to store extract build objects")
+
+	rootCmd.AddCommand(teardownCmd)
 }
 
-func runTeardownCmd(_ *cobra.Command, _ []string) error {
+func runTeardownCmd(opts teardownOpts) error {
 	utils.ParseFlags()
 
-	if teardownOpts.poolName == "" {
+	if opts.poolName == "" {
 		klog.Fatalln("No pool name provided!")
 	}
 
-	return mobTeardown(framework.NewClientSet(""), teardownOpts.poolName)
+	return mobTeardown(framework.NewClientSet(""), opts.poolName)
 }
 
 func mobTeardown(cs *framework.ClientSet, targetPool string) error {

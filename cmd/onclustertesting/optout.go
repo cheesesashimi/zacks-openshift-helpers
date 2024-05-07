@@ -13,29 +13,26 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	optOutCmd = &cobra.Command{
+func init() {
+	optOutOpts := optInAndOutOpts{}
+
+	optOutCmd := &cobra.Command{
 		Use:   "optout",
 		Short: "Opts a node out of on-cluster builds",
 		Long:  "",
-		RunE:  runOptOutCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runOptOutCmd(optOutOpts)
+		},
 	}
 
-	optOutOpts struct {
-		poolName string
-		nodeName string
-		force    bool
-	}
-)
-
-func init() {
-	rootCmd.AddCommand(optOutCmd)
 	optOutCmd.PersistentFlags().StringVar(&optOutOpts.poolName, "pool", defaultLayeredPoolName, "Pool name")
 	optOutCmd.PersistentFlags().StringVar(&optOutOpts.nodeName, "node", "", "Node name")
 	optOutCmd.PersistentFlags().BoolVar(&optOutOpts.force, "force", false, "Forcefully opt node out")
+
+	rootCmd.AddCommand(optOutCmd)
 }
 
-func runOptOutCmd(_ *cobra.Command, _ []string) error {
+func runOptOutCmd(optOutOpts optInAndOutOpts) error {
 	utils.ParseFlags()
 
 	if !optOutOpts.force && isEmpty(optOutOpts.poolName) {

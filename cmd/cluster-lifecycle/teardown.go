@@ -12,40 +12,39 @@ import (
 	"k8s.io/klog"
 )
 
-var (
-	teardownCmd = &cobra.Command{
+type teardownOpts struct {
+	force bool
+	inputOpts
+}
+
+func init() {
+	teardownOpts := teardownOpts{}
+
+	teardownCmd := &cobra.Command{
 		Use:   "teardown",
 		Short: "Brings up an OpenShift cluster for testing purposes",
 		Long:  "",
-		Run:   runTeardownCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return teardown(teardownOpts)
+		},
 	}
 
-	force        bool
-	teardownOpts inputOpts
-)
-
-func init() {
-	rootCmd.AddCommand(teardownCmd)
 	teardownCmd.PersistentFlags().StringVar(&teardownOpts.workDir, "work-dir", defaultWorkDir, "The directory to use for running openshift-install.")
-	teardownCmd.PersistentFlags().BoolVar(&force, "force", false, "Runs openshift-install destroy cluster, if openshift-install is present.")
-	teardownCmd.PersistentFlags().BoolVar(&setupOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
+	teardownCmd.PersistentFlags().BoolVar(&teardownOpts.force, "force", false, "Runs openshift-install destroy cluster, if openshift-install is present.")
+	teardownCmd.PersistentFlags().BoolVar(&teardownOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
+
+	rootCmd.AddCommand(teardownCmd)
 }
 
-func runTeardownCmd(_ *cobra.Command, _ []string) {
-	if err := teardown(); err != nil {
-		klog.Fatalln(err)
-	}
-}
-
-func teardown() error {
+func teardown(teardownOpts teardownOpts) error {
 	if err := teardownOpts.validateForTeardown(); err != nil {
 		return err
 	}
 
 	if teardownOpts.writeLogFile {
-		ci, ciErr := readCurrentInstallFile(teardownOpts)
+		ci, ciErr := readCurrentInstallFile(teardownOpts.inputOpts)
 		if ciErr != nil && !errors.Is(ciErr, os.ErrNotExist) {
-			if !force {
+			if !teardownOpts.force {
 				return ciErr
 			}
 
@@ -56,20 +55,20 @@ func teardown() error {
 				return
 			}
 
-			if err := ci.appendTeardownToLogFile(teardownOpts); err != nil {
+			if err := ci.appendTeardownToLogFile(teardownOpts.inputOpts); err != nil {
 				klog.Fatalln(err)
 			}
 		}()
 	}
 
-	if force {
+	if teardownOpts.force {
 		return forcedTeardown(teardownOpts)
 	}
 
 	return gracefulTeardown(teardownOpts)
 }
 
-func gracefulTeardown(opts inputOpts) error {
+func gracefulTeardown(opts teardownOpts) error {
 	filesToCheckFor := []string{
 		opts.installerPath(),
 		opts.appendWorkDir("metadata.json"),
@@ -99,7 +98,7 @@ func gracefulTeardown(opts inputOpts) error {
 	return nil
 }
 
-func forcedTeardown(opts inputOpts) error {
+func forcedTeardown(opts teardownOpts) error {
 	errs := []error{}
 
 	if err := destroyCluster(opts); err != nil {
@@ -117,7 +116,7 @@ func forcedTeardown(opts inputOpts) error {
 	return aggerrs.NewAggregate(errs)
 }
 
-func teardownWorkDir(opts inputOpts) error {
+func teardownWorkDir(opts teardownOpts) error {
 	pathsToIgnore := sets.NewString([]string{
 		opts.workDir,
 		opts.vacationFilePath(),

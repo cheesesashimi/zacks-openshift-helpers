@@ -12,16 +12,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var (
-	revertCmd = &cobra.Command{
+func init() {
+	revertCmd := &cobra.Command{
 		Use:   "revert",
 		Short: "Reverts the changes to the sandbox cluster and rolls back to the stock MCO image.",
 		Long:  "",
 		RunE:  doRevert,
 	}
-)
 
-func init() {
 	rootCmd.AddCommand(revertCmd)
 }
 

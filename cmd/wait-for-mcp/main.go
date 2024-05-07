@@ -19,27 +19,25 @@ var (
 	date    = "not-built-properly"
 )
 
-var (
-	rootCmd = &cobra.Command{
+func main() {
+	var timeout string
+
+	rootCmd := &cobra.Command{
 		Use:   "wait-for-mcp",
 		Short: "Waits for a given MachineConfigPool to complete its updates.",
 		Long:  "",
-		RunE:  waitForMCPRollout,
+		RunE: func(_ *cobra.Command, args []string) error {
+			return waitForMCPRollout(args, timeout)
+		},
 	}
 
-	timeout string
-)
-
-func init() {
 	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
 	rootCmd.PersistentFlags().StringVar(&timeout, "timeout", "15m", "Timeout expressed in 0h0m0s format.")
-}
 
-func main() {
 	os.Exit(cli.Run(rootCmd))
 }
 
-func waitForMCPRollout(_ *cobra.Command, args []string) error {
+func waitForMCPRollout(args []string, timeout string) error {
 	parsedTimeout, err := time.ParseDuration(timeout)
 	if err != nil {
 		return err

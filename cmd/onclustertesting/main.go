@@ -11,17 +11,17 @@ import (
 )
 
 var (
+	version = "not-built-properly"
+	commit  = "not-built-properly"
+	date    = "not-built-properly"
+)
+
+var (
 	rootCmd = &cobra.Command{
 		Use:   "onclustertesting",
 		Short: "Help with testing on-cluster builds",
 		Long:  "",
 	}
-)
-
-var (
-	version = "not-built-properly"
-	commit  = "not-built-properly"
-	date    = "not-built-properly"
 )
 
 func init() {

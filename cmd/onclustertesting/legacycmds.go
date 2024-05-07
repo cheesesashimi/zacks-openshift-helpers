@@ -5,26 +5,21 @@ import (
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/onclustertesting/internal/legacycmds"
 	"github.com/spf13/cobra"
-	"k8s.io/klog/v2"
 )
 
-func addCommandIfEnvVarIsSet(envVarName string, cmdFunc func() *cobra.Command) {
-	if _, ok := os.LookupEnv(envVarName); !ok {
-		return
+func init() {
+	cmds := map[string]func() *cobra.Command{
+		"ENABLE_SET_IMAGE_COMMAND":     legacycmds.SetImageCommand,
+		"ENABLE_SET_STATUS_COMMAND":    legacycmds.SetStatusCommand,
+		"ENABLE_EXTRACT_COMMAND":       legacycmds.ExtractCommand,
+		"ENABLE_CLEAR_STATUS_COMMAND":  legacycmds.ClearStatusCommand,
+		"ENABLE_MACHINECONFIG_COMMAND": legacycmds.MachineConfigCommand,
+		"ENABLE_RENDER_COMMAND":        legacycmds.RenderCommand,
 	}
 
-	cmd := cmdFunc()
-
-	klog.Warningf("The %q command is deprecated and will be removed in a future release!", cmd.Use)
-
-	rootCmd.AddCommand(cmd)
-}
-
-func init() {
-	addCommandIfEnvVarIsSet("ENABLE_SET_IMAGE_COMMAND", legacycmds.SetImageCommand)
-	addCommandIfEnvVarIsSet("ENABLE_SET_STATUS_COMMAND", legacycmds.SetStatusCommand)
-	addCommandIfEnvVarIsSet("ENABLE_EXTRACT_COMMAND", legacycmds.ExtractCommand)
-	addCommandIfEnvVarIsSet("ENABLE_CLEAR_STATUS_COMMAND", legacycmds.ClearStatusCommand)
-	addCommandIfEnvVarIsSet("ENABLE_MACHINECONFIG_COMMAND", legacycmds.MachineConfigCommand)
-	addCommandIfEnvVarIsSet("ENABLE_RENDER_COMMAND", legacycmds.RenderCommand)
+	for envVarName, cmd := range cmds {
+		if _, ok := os.LookupEnv(envVarName); ok {
+			rootCmd.AddCommand(cmd())
+		}
+	}
 }

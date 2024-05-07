@@ -13,39 +13,42 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	optInCmd = &cobra.Command{
+type optInAndOutOpts struct {
+	poolName string
+	nodeName string
+	force    bool
+}
+
+func init() {
+	optInOpts := optInAndOutOpts{}
+
+	optInCmd := &cobra.Command{
 		Use:   "optin",
 		Short: "Opts a node into on-cluster builds",
 		Long:  "",
-		RunE:  runOptInCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runOptInCmd(optInOpts)
+		},
 	}
 
-	optInOpts struct {
-		poolName string
-		nodeName string
-		force    bool
-	}
-)
-
-func init() {
-	rootCmd.AddCommand(optInCmd)
 	optInCmd.PersistentFlags().StringVar(&optInOpts.poolName, "pool", defaultLayeredPoolName, "Pool name")
 	optInCmd.PersistentFlags().StringVar(&optInOpts.nodeName, "node", "", "MachineConfig name")
+
+	rootCmd.AddCommand(optInCmd)
 }
 
-func runOptInCmd(_ *cobra.Command, _ []string) error {
+func runOptInCmd(opts optInAndOutOpts) error {
 	utils.ParseFlags()
 
-	if isEmpty(optInOpts.poolName) {
+	if isEmpty(opts.poolName) {
 		return fmt.Errorf("no pool name provided")
 	}
 
-	if isEmpty(optInOpts.nodeName) {
+	if isEmpty(opts.nodeName) {
 		return fmt.Errorf("no node name provided")
 	}
 
-	return optInNode(framework.NewClientSet(""), optInOpts.nodeName, optInOpts.poolName)
+	return optInNode(framework.NewClientSet(""), opts.nodeName, opts.poolName)
 }
 
 func optInNode(cs *framework.ClientSet, nodeName, targetPool string) error {

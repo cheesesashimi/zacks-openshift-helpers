@@ -7,29 +7,23 @@ import (
 	"k8s.io/klog"
 )
 
-var (
-	restartCmd = &cobra.Command{
+func init() {
+	var forceRestart bool
+
+	restartCmd := &cobra.Command{
 		Use:   "restart",
 		Short: "Restarts all of the MCO pods",
 		Long:  "",
-		Run:   runRestartCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return restart(forceRestart)
+		},
 	}
 
-	forceRestart bool
-)
-
-func init() {
-	rootCmd.AddCommand(restartCmd)
 	restartCmd.PersistentFlags().BoolVar(&forceRestart, "force", false, "Deletes the pods to forcefully restart the MCO.")
+	rootCmd.AddCommand(restartCmd)
 }
 
-func runRestartCmd(_ *cobra.Command, args []string) {
-	if err := restart(args); err != nil {
-		klog.Fatalln(err)
-	}
-}
-
-func restart(_ []string) error {
+func restart(forceRestart bool) error {
 	cs := framework.NewClientSet("")
 
 	if forceRestart {

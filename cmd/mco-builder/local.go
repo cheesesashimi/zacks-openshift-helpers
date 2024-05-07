@@ -40,7 +40,7 @@ func (l *localBuildOpts) getBuildMode() repo.BuildMode {
 	return repo.BuildMode(l.buildMode)
 }
 
-func (l *localBuildOpts) validate() error {
+func (l *localBuildOpts) validate(validBuildModes sets.Set[repo.BuildMode]) error {
 	if l.repoRoot == "" {
 		return fmt.Errorf("--repo-root must be provided")
 	}
@@ -62,8 +62,8 @@ func (l *localBuildOpts) validate() error {
 		return err
 	}
 
-	if !buildModes.Has(l.getBuildMode()) {
-		return fmt.Errorf("invalid build mode %s, valid build modes: %v", l.buildMode, sets.List(buildModes))
+	if !validBuildModes.Has(l.getBuildMode()) {
+		return fmt.Errorf("invalid build mode %s, valid build modes: %v", l.buildMode, sets.List(validBuildModes))
 	}
 
 	if l.directPush {
@@ -100,36 +100,36 @@ func (l *localBuildOpts) validate() error {
 	return nil
 }
 
-var (
-	localCmd = &cobra.Command{
+func init() {
+	validBuildModes := repo.GetBuildModes().Delete(repo.BuildModeCluster)
+
+	opts := localBuildOpts{}
+
+	localCmd := &cobra.Command{
 		Use:   "local",
 		Short: "Builds an MCO image locally and deploys it to your sandbox cluster.",
 		Long:  "Builds the MCO image locally using the specified builder and options. Can either push to a remote image registry (such as Quay.io) or can expose a route to enable pushing directly into ones sandbox cluster.",
-		RunE:  runLocalCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := opts.validate(validBuildModes); err != nil {
+				return err
+			}
+
+			return runLocalCmd(opts)
+		},
 	}
 
-	buildModes sets.Set[repo.BuildMode]
-
-	opts localBuildOpts
-)
-
-func init() {
-	buildModes = repo.GetBuildModes().Delete(repo.BuildModeCluster)
-
-	rootCmd.AddCommand(localCmd)
 	localCmd.PersistentFlags().BoolVar(&opts.directPush, "direct", false, "Exposes a route and pushes the image directly into ones cluster")
 	localCmd.PersistentFlags().StringVar(&opts.repoRoot, "repo-root", "", "Path to the local MCO Git repo")
 	localCmd.PersistentFlags().StringVar(&opts.finalImagePushSecretPath, "push-secret", "", "Path to the push secret path needed to push to the provided pullspec (not needed in direct mode)")
 	localCmd.PersistentFlags().StringVar(&opts.finalImagePullspec, "final-image-pullspec", "", "Where to push the final image (not needed in direct mode)")
-	localCmd.PersistentFlags().StringVar(&opts.buildMode, "build-mode", string(repo.BuildModeFast), fmt.Sprintf("What build mode to use: %v", sets.List(buildModes)))
+	localCmd.PersistentFlags().StringVar(&opts.buildMode, "build-mode", string(repo.BuildModeFast), fmt.Sprintf("What build mode to use: %v", sets.List(validBuildModes)))
 	localCmd.PersistentFlags().StringVar(&opts.builderKind, "builder", string(builders.GetDefaultBuilderTypeForPlatform()), fmt.Sprintf("What image builder to use: %v", sets.List(builders.GetLocalBuilderTypes())))
 	localCmd.PersistentFlags().BoolVar(&opts.skipRollout, "skip-rollout", false, "Builds and pushes the image, but does not update the MCO deployment / daemonset objects")
+
+	rootCmd.AddCommand(localCmd)
 }
 
-func runLocalCmd(_ *cobra.Command, _ []string) error {
-	if err := opts.validate(); err != nil {
-		return err
-	}
+func runLocalCmd(opts localBuildOpts) error {
 
 	cs := framework.NewClientSet("")
 
@@ -173,7 +173,7 @@ func buildLocallyAndDeploy(cs *framework.ClientSet, buildOpts localBuildOpts) er
 		FinalPullspec:  buildOpts.finalImagePullspec,
 		PushSecretPath: buildOpts.finalImagePushSecretPath,
 		DockerfileName: r.DockerfilePath(),
-		BuildMode:      repo.BuildMode(opts.buildMode),
+		BuildMode:      repo.BuildMode(buildOpts.buildMode),
 	}
 
 	builder := builders.NewLocalBuilder(opts, buildOpts.getBuilderType())
@@ -253,7 +253,7 @@ func buildLocallyAndPushIntoCluster(cs *framework.ClientSet, buildOpts localBuil
 		FinalPullspec:  extPullspec,
 		PushSecretPath: secretPath,
 		DockerfileName: r.DockerfilePath(),
-		BuildMode:      repo.BuildMode(opts.buildMode),
+		BuildMode:      repo.BuildMode(buildOpts.buildMode),
 	}
 
 	builder := builders.NewLocalBuilder(opts, buildOpts.getBuilderType())

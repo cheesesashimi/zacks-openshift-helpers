@@ -15,38 +15,27 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	setupCmd = &cobra.Command{
+func init() {
+	setupOpts := opts{}
+
+	setupCmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Sets up pool for on-cluster build testing",
 		Long:  "",
-		RunE:  runSetupCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runSetupCmd(setupOpts)
+		},
 	}
 
-	inClusterRegistryCmd = &cobra.Command{
+	inClusterRegistryCmd := &cobra.Command{
 		Use:   "in-cluster-registry",
 		Short: "Sets up pool for on-cluster build testing using an ImageStream",
 		Long:  "",
-		RunE:  runInClusterRegistrySetupCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runInClusterRegistrySetupCmd(setupOpts)
+		},
 	}
 
-	setupOpts struct {
-		dockerfilePath              string
-		pullSecretPath              string
-		pushSecretPath              string
-		pullSecretName              string
-		pushSecretName              string
-		finalImagePullspec          string
-		poolName                    string
-		waitForBuildInfo            bool
-		enableFeatureGate           bool
-		copyEtcPkiEntitlementSecret bool
-		injectYumRepos              bool
-	}
-)
-
-func init() {
-	rootCmd.AddCommand(setupCmd)
 	setupCmd.AddCommand(inClusterRegistryCmd)
 	setupCmd.PersistentFlags().StringVar(&setupOpts.poolName, "pool", defaultLayeredPoolName, "Pool name to setup")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.waitForBuildInfo, "wait-for-build", false, "Wait for build info")
@@ -60,9 +49,10 @@ func init() {
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.injectYumRepos, "inject-yum-repos", false, fmt.Sprintf("Injects contents from the /etc/yum.repos.d and /etc/pki/rpm-gpg directories found in %s into the %s namespace.", yumReposContainerImagePullspec, ctrlcommon.MCONamespace))
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.copyEtcPkiEntitlementSecret, "copy-etc-pki-entitlement-secret", false, fmt.Sprintf("Copies etc-pki-entitlement into the %s namespace, assuming it exists.", ctrlcommon.MCONamespace))
 
+	rootCmd.AddCommand(setupCmd)
 }
 
-func runSetupCmd(_ *cobra.Command, _ []string) error {
+func runSetupCmd(setupOpts opts) error {
 	utils.ParseFlags()
 
 	// TODO: Figure out how to use cobra flags for validation directly.
@@ -92,24 +82,24 @@ func runSetupCmd(_ *cobra.Command, _ []string) error {
 
 	cs := framework.NewClientSet("")
 
-	if err := checkForRequiredFeatureGates(cs); err != nil {
+	if err := checkForRequiredFeatureGates(cs, setupOpts); err != nil {
 		return err
 	}
 
-	return mobSetup(cs, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
+	return mobSetup(cs, opts{
 		pushSecretName:              setupOpts.pushSecretName,
 		pullSecretName:              setupOpts.pullSecretName,
 		pushSecretPath:              setupOpts.pushSecretPath,
 		pullSecretPath:              setupOpts.pullSecretPath,
 		finalImagePullspec:          setupOpts.finalImagePullspec,
 		dockerfilePath:              setupOpts.dockerfilePath,
-		pool:                        setupOpts.poolName,
+		poolName:                    setupOpts.poolName,
 		injectYumRepos:              setupOpts.injectYumRepos,
 		copyEtcPkiEntitlementSecret: setupOpts.copyEtcPkiEntitlementSecret,
 	})
 }
 
-func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
+func runInClusterRegistrySetupCmd(setupOpts opts) error {
 	utils.ParseFlags()
 
 	if err := errIfNotSet(setupOpts.poolName, "pool"); err != nil {
@@ -122,7 +112,7 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 
 	cs := framework.NewClientSet("")
 
-	if err := checkForRequiredFeatureGates(cs); err != nil {
+	if err := checkForRequiredFeatureGates(cs, setupOpts); err != nil {
 		return err
 	}
 
@@ -141,33 +131,29 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	return mobSetup(cs, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
-		pushSecretName:              pushSecretName,
-		finalImagePullspec:          pullspec,
-		dockerfilePath:              setupOpts.dockerfilePath,
-		pool:                        setupOpts.poolName,
-		injectYumRepos:              setupOpts.injectYumRepos,
-		copyEtcPkiEntitlementSecret: setupOpts.copyEtcPkiEntitlementSecret,
-	})
+	setupOpts.pushSecretName = pushSecretName
+	setupOpts.finalImagePullspec = pullspec
+
+	return mobSetup(cs, setupOpts)
 }
 
-func mobSetup(cs *framework.ClientSet, getBuildInfo bool, cmOpts onClusterBuildConfigMapOpts) error {
+func mobSetup(cs *framework.ClientSet, setupOpts opts) error {
 	eg := errgroup.Group{}
 
 	eg.Go(func() error {
-		_, err := createPool(cs, cmOpts.pool)
+		_, err := createPool(cs, setupOpts.poolName)
 		return err
 	})
 
 	eg.Go(func() error {
-		return createSecrets(cs, cmOpts)
+		return createSecrets(cs, setupOpts)
 	})
 
 	if err := eg.Wait(); err != nil {
 		return err
 	}
 
-	mosc, err := cmOpts.toMachineOSConfig()
+	mosc, err := setupOpts.toMachineOSConfig()
 	if err != nil {
 		return err
 	}
@@ -176,14 +162,14 @@ func mobSetup(cs *framework.ClientSet, getBuildInfo bool, cmOpts onClusterBuildC
 		return err
 	}
 
-	if !getBuildInfo {
+	if !setupOpts.waitForBuildInfo {
 		return nil
 	}
 
-	return waitForBuildInfo(cs, cmOpts.pool)
+	return waitForBuildInfo(cs, setupOpts.poolName)
 }
 
-func checkForRequiredFeatureGates(cs *framework.ClientSet) error {
+func checkForRequiredFeatureGates(cs *framework.ClientSet, setupOpts opts) error {
 	if err := validateFeatureGatesEnabled(cs, "OnClusterBuild"); err != nil {
 		if setupOpts.enableFeatureGate {
 			return enableFeatureGate(cs)
@@ -257,7 +243,7 @@ func validateFeatureGatesEnabled(cs *framework.ClientSet, requiredFeatureGates .
 	return fmt.Errorf("required FeatureGate(s) %v not enabled; have: %v", sets.List(disabledRequiredFeatures), sets.List(enabledFeatures))
 }
 
-func createSecrets(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) error {
+func createSecrets(cs *framework.ClientSet, opts opts) error {
 	eg := errgroup.Group{}
 
 	eg.Go(func() error {

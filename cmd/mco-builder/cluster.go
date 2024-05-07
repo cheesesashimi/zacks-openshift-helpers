@@ -29,29 +29,30 @@ func (c *clusterBuildOpts) validate() error {
 	return nil
 }
 
-var (
-	clusterCmd = &cobra.Command{
+func init() {
+	clusterOpts := clusterBuildOpts{}
+
+	clusterCmd := &cobra.Command{
 		Use:   "cluster",
 		Short: "Performs the build operation within the sandbox cluster using an OpenShift Image Build",
 		Long:  "",
-		RunE:  runClusterCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := clusterOpts.validate(); err != nil {
+				return err
+			}
+
+			return runClusterCommand(clusterOpts)
+		},
 	}
 
-	clusterOpts clusterBuildOpts
-)
-
-func init() {
-	rootCmd.AddCommand(clusterCmd)
 	clusterCmd.PersistentFlags().BoolVar(&clusterOpts.followBuild, "follow", true, "Stream build logs")
 	clusterCmd.PersistentFlags().StringVar(&clusterOpts.repoRoot, "repo-root", "", "Path to the local MCO Git repo")
+
+	rootCmd.AddCommand(clusterCmd)
 }
 
-func runClusterCmd(_ *cobra.Command, _ []string) error {
+func runClusterCommand(clusterOpts clusterBuildOpts) error {
 	cs := framework.NewClientSet("")
-
-	if err := clusterOpts.validate(); err != nil {
-		return err
-	}
 
 	if err := createImagestream(cs, imagestreamName); err != nil {
 		return err

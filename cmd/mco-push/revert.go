@@ -7,27 +7,24 @@ import (
 	"k8s.io/klog"
 )
 
-var (
-	revertCmd = &cobra.Command{
+func init() {
+	var forceRestart bool
+
+	revertCmd := &cobra.Command{
 		Use:   "revert",
 		Short: "Reverts the MCO image to the one in the OpenShift release",
 		Long:  "",
-		Run:   runRevertCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return revert(forceRestart)
+		},
 	}
-)
 
-func init() {
-	rootCmd.AddCommand(revertCmd)
 	revertCmd.PersistentFlags().BoolVar(&forceRestart, "force", false, "Deletes the pods to forcefully restart the MCO.")
+
+	rootCmd.AddCommand(revertCmd)
 }
 
-func runRevertCmd(_ *cobra.Command, _ []string) {
-	if err := revert(); err != nil {
-		klog.Fatalln(err)
-	}
-}
-
-func revert() error {
+func revert(forceRestart bool) error {
 	cs := framework.NewClientSet("")
 	if err := rollout.RevertToOriginalMCOImage(cs, forceRestart); err != nil {
 		return err

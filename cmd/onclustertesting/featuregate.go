@@ -5,19 +5,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	enableFeatureGateCmd = &cobra.Command{
+func init() {
+	featureGateCmd := &cobra.Command{
 		Use:   "enable-featuregate",
 		Short: "Enables the appropriate feature gates for on=cluster layering to work",
 		Long:  "",
-		RunE:  runEnableFeatureGateCmd,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return enableFeatureGate(framework.NewClientSet(""))
+		},
 	}
-)
 
-func init() {
-	rootCmd.AddCommand(enableFeatureGateCmd)
-}
-
-func runEnableFeatureGateCmd(_ *cobra.Command, _ []string) error {
-	return enableFeatureGate(framework.NewClientSet(""))
+	rootCmd.AddCommand(featureGateCmd)
 }

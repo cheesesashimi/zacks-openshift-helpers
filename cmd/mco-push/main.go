@@ -11,17 +11,17 @@ import (
 )
 
 var (
+	version = "not-built-properly"
+	commit  = "not-built-properly"
+	date    = "not-built-properly"
+)
+
+var (
 	rootCmd = &cobra.Command{
 		Use:   "mco-push",
 		Short: "Automates the replacement of the machine-config-operator (MCO) image in an OpenShift cluster for testing purposes.",
 		Long:  "",
 	}
-)
-
-var (
-	version = "not-built-properly"
-	commit  = "not-built-properly"
-	date    = "not-built-properly"
 )
 
 func init() {

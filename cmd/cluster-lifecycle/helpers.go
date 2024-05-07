@@ -77,8 +77,8 @@ func installCluster(opts inputOpts) error {
 	return cmd.Run()
 }
 
-func destroyCluster(opts inputOpts) error {
-	installerVersion, err := getInstallerVersion(opts)
+func destroyCluster(opts teardownOpts) error {
+	installerVersion, err := getInstallerVersion(opts.inputOpts)
 	if err != nil {
 		return err
 	}
