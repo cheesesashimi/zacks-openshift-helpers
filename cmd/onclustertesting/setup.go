@@ -6,6 +6,7 @@ import (
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	configv1 "github.com/openshift/api/config/v1"
+	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -30,15 +31,17 @@ var (
 	}
 
 	setupOpts struct {
-		dockerfilePath     string
-		pullSecretPath     string
-		pushSecretPath     string
-		pullSecretName     string
-		pushSecretName     string
-		finalImagePullspec string
-		poolName           string
-		waitForBuildInfo   bool
-		enableFeatureGate  bool
+		dockerfilePath              string
+		pullSecretPath              string
+		pushSecretPath              string
+		pullSecretName              string
+		pushSecretName              string
+		finalImagePullspec          string
+		poolName                    string
+		waitForBuildInfo            bool
+		enableFeatureGate           bool
+		copyEtcPkiEntitlementSecret bool
+		injectYumRepos              bool
 	}
 )
 
@@ -54,6 +57,9 @@ func init() {
 	setupCmd.PersistentFlags().StringVar(&setupOpts.finalImagePullspec, "final-pullspec", "", "The final image pushspec to use for testing")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.dockerfilePath, "dockerfile-path", "", "Optional Dockerfile to inject for the build.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableFeatureGate, "enable-feature-gate", false, "Enables the required featuregates if not already enabled.")
+	setupCmd.PersistentFlags().BoolVar(&setupOpts.injectYumRepos, "inject-yum-repos", false, fmt.Sprintf("Injects contents from the /etc/yum.repos.d and /etc/pki/rpm-gpg directories found in %s into the %s namespace.", yumReposContainerImagePullspec, ctrlcommon.MCONamespace))
+	setupCmd.PersistentFlags().BoolVar(&setupOpts.copyEtcPkiEntitlementSecret, "copy-etc-pki-entitlement-secret", false, fmt.Sprintf("Copies etc-pki-entitlement into the %s namespace, assuming it exists.", ctrlcommon.MCONamespace))
+
 }
 
 func runSetupCmd(_ *cobra.Command, _ []string) error {
@@ -80,6 +86,10 @@ func runSetupCmd(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("flags --push-secret-name and --push-secret-path cannot be combined")
 	}
 
+	if setupOpts.injectYumRepos && setupOpts.copyEtcPkiEntitlementSecret {
+		return fmt.Errorf("flags --inject-yum-repos and --copy-etc-pki-entitlement cannot be combined")
+	}
+
 	cs := framework.NewClientSet("")
 
 	if err := checkForRequiredFeatureGates(cs); err != nil {
@@ -87,13 +97,15 @@ func runSetupCmd(_ *cobra.Command, _ []string) error {
 	}
 
 	return mobSetup(cs, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
-		pushSecretName:     setupOpts.pushSecretName,
-		pullSecretName:     setupOpts.pullSecretName,
-		pushSecretPath:     setupOpts.pushSecretPath,
-		pullSecretPath:     setupOpts.pullSecretPath,
-		finalImagePullspec: setupOpts.finalImagePullspec,
-		dockerfilePath:     setupOpts.dockerfilePath,
-		pool:               setupOpts.poolName,
+		pushSecretName:              setupOpts.pushSecretName,
+		pullSecretName:              setupOpts.pullSecretName,
+		pushSecretPath:              setupOpts.pushSecretPath,
+		pullSecretPath:              setupOpts.pullSecretPath,
+		finalImagePullspec:          setupOpts.finalImagePullspec,
+		dockerfilePath:              setupOpts.dockerfilePath,
+		pool:                        setupOpts.poolName,
+		injectYumRepos:              setupOpts.injectYumRepos,
+		copyEtcPkiEntitlementSecret: setupOpts.copyEtcPkiEntitlementSecret,
 	})
 }
 
@@ -102,6 +114,10 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 
 	if err := errIfNotSet(setupOpts.poolName, "pool"); err != nil {
 		return err
+	}
+
+	if setupOpts.injectYumRepos && setupOpts.copyEtcPkiEntitlementSecret {
+		return fmt.Errorf("flags --inject-yum-repos and --copy-etc-pki-entitlement cannot be combined")
 	}
 
 	cs := framework.NewClientSet("")
@@ -126,10 +142,12 @@ func runInClusterRegistrySetupCmd(_ *cobra.Command, _ []string) error {
 	}
 
 	return mobSetup(cs, setupOpts.waitForBuildInfo, onClusterBuildConfigMapOpts{
-		pushSecretName:     pushSecretName,
-		finalImagePullspec: pullspec,
-		dockerfilePath:     setupOpts.dockerfilePath,
-		pool:               setupOpts.poolName,
+		pushSecretName:              pushSecretName,
+		finalImagePullspec:          pullspec,
+		dockerfilePath:              setupOpts.dockerfilePath,
+		pool:                        setupOpts.poolName,
+		injectYumRepos:              setupOpts.injectYumRepos,
+		copyEtcPkiEntitlementSecret: setupOpts.copyEtcPkiEntitlementSecret,
 	})
 }
 
@@ -253,29 +271,32 @@ func createSecrets(cs *framework.ClientSet, opts onClusterBuildConfigMapOpts) er
 		return nil
 	})
 
-	eg.Go(func() error {
-		if opts.pushSecretPath != "" {
-			if err := createSecretFromFile(cs, opts.pushSecretPath); err != nil {
-				return err
-			}
-		}
+	if opts.pushSecretPath != "" {
+		pushSecretPath := opts.pushSecretPath
+		eg.Go(func() error {
+			return createSecretFromFile(cs, pushSecretPath)
+		})
+	}
 
-		return nil
-	})
+	if opts.pullSecretPath != "" {
+		pullSecretPath := opts.pullSecretPath
+		eg.Go(func() error {
+			return createSecretFromFile(cs, pullSecretPath)
+		})
 
-	eg.Go(func() error {
-		if opts.pullSecretPath != "" {
-			if err := createSecretFromFile(cs, opts.pullSecretPath); err != nil {
-				return err
-			}
-		}
+	}
 
-		return nil
-	})
+	if opts.copyEtcPkiEntitlementSecret {
+		eg.Go(func() error {
+			return copyEtcPkiEntitlementSecret(cs)
+		})
+	}
 
-	eg.Go(func() error {
-		return copyEtcPkiEntitlementSecret(cs)
-	})
+	if opts.injectYumRepos {
+		eg.Go(func() error {
+			return extractAndInjectYumEpelRepos(cs)
+		})
+	}
 
 	if err := eg.Wait(); err != nil {
 		return err
