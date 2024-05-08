@@ -80,6 +80,10 @@ func runSetupCmd(setupOpts opts) error {
 		return fmt.Errorf("flags --inject-yum-repos and --copy-etc-pki-entitlement cannot be combined")
 	}
 
+	if err := utils.CheckForBinaries([]string{"oc"}); err != nil {
+		return err
+	}
+
 	cs := framework.NewClientSet("")
 
 	if err := checkForRequiredFeatureGates(cs, setupOpts); err != nil {

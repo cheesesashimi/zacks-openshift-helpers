@@ -15,7 +15,7 @@ func CheckForBinaries(bins []string) error {
 
 	for _, bin := range bins {
 		if _, err := exec.LookPath(bin); err != nil {
-			errs = append(errs, fmt.Errorf("binary %q not found: %w", bin, err))
+			errs = append(errs, fmt.Errorf("required binary %q not found: %w", bin, err))
 		}
 	}
 
