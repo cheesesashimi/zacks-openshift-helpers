@@ -15,7 +15,7 @@ type opts struct {
 	pushSecretPath              string
 	pullSecretPath              string
 	finalImagePullspec          string
-	dockerfilePath              string
+	containerfilePath           string
 	poolName                    string
 	injectYumRepos              bool
 	waitForBuildInfo            bool
@@ -23,26 +23,26 @@ type opts struct {
 	enableFeatureGate           bool
 }
 
-func (o *opts) getDockerfileContent() (string, error) {
-	if o.dockerfilePath == "" {
-		return "", fmt.Errorf("no custom Dockerfile path provided")
+func (o *opts) getContainerfileContent() (string, error) {
+	if o.containerfilePath == "" {
+		return "", fmt.Errorf("no custom Containerfile path provided")
 	}
 
-	dockerfileBytes, err := os.ReadFile(o.dockerfilePath)
+	containerfileBytes, err := os.ReadFile(o.containerfilePath)
 	if err != nil {
-		return "", fmt.Errorf("cannot read Dockerfile from %s: %w", o.dockerfilePath, err)
+		return "", fmt.Errorf("cannot read Containerfile from %s: %w", o.containerfilePath, err)
 	}
 
-	klog.Infof("Using contents in Dockerfile %q for %s custom Dockerfile", o.dockerfilePath, o.poolName)
-	return string(dockerfileBytes), nil
+	klog.Infof("Using contents in Containerfile %q for %s custom Containerfile", o.containerfilePath, o.poolName)
+	return string(containerfileBytes), nil
 }
 
-func (o *opts) maybeGetDockerfileContent() (string, error) {
-	if o.dockerfilePath == "" {
+func (o *opts) maybeGetContainerfileContent() (string, error) {
+	if o.containerfilePath == "" {
 		return "", nil
 	}
 
-	return o.getDockerfileContent()
+	return o.getContainerfileContent()
 }
 
 func (o *opts) shouldCloneGlobalPullSecret() bool {
@@ -60,7 +60,7 @@ func (o *opts) toMachineOSConfig() (*mcfgv1alpha1.MachineOSConfig, error) {
 		return nil, err
 	}
 
-	dockerfileContents, err := o.maybeGetDockerfileContent()
+	containerfileContents, err := o.maybeGetContainerfileContent()
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (o *opts) toMachineOSConfig() (*mcfgv1alpha1.MachineOSConfig, error) {
 				Containerfile: []mcfgv1alpha1.MachineOSContainerfile{
 					{
 						ContainerfileArch: mcfgv1alpha1.NoArch,
-						Content:           dockerfileContents,
+						Content:           containerfileContents,
 					},
 				},
 			},

@@ -44,7 +44,7 @@ func init() {
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", "", "Path to a pull secret K8s YAML to use. If absent, will clone global pull secret.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pushSecretPath, "push-secret-path", "", "Path to a push secret K8s YAML to use.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.finalImagePullspec, "final-pullspec", "", "The final image pushspec to use for testing")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.dockerfilePath, "dockerfile-path", "", "Optional Dockerfile to inject for the build.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.containerfilePath, "containerfile-path", "", "Optional Containerfile to inject for the build.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableFeatureGate, "enable-feature-gate", false, "Enables the required featuregates if not already enabled.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.injectYumRepos, "inject-yum-repos", false, fmt.Sprintf("Injects contents from the /etc/yum.repos.d and /etc/pki/rpm-gpg directories found in %s into the %s namespace.", yumReposContainerImagePullspec, ctrlcommon.MCONamespace))
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.copyEtcPkiEntitlementSecret, "copy-etc-pki-entitlement-secret", false, fmt.Sprintf("Copies etc-pki-entitlement into the %s namespace, assuming it exists.", ctrlcommon.MCONamespace))
@@ -92,7 +92,7 @@ func runSetupCmd(setupOpts opts) error {
 		pushSecretPath:              setupOpts.pushSecretPath,
 		pullSecretPath:              setupOpts.pullSecretPath,
 		finalImagePullspec:          setupOpts.finalImagePullspec,
-		dockerfilePath:              setupOpts.dockerfilePath,
+		containerfilePath:           setupOpts.containerfilePath,
 		poolName:                    setupOpts.poolName,
 		injectYumRepos:              setupOpts.injectYumRepos,
 		copyEtcPkiEntitlementSecret: setupOpts.copyEtcPkiEntitlementSecret,
