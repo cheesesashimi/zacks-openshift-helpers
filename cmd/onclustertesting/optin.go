@@ -32,7 +32,7 @@ func init() {
 	}
 
 	optInCmd.PersistentFlags().StringVar(&optInOpts.poolName, "pool", defaultLayeredPoolName, "Pool name")
-	optInCmd.PersistentFlags().StringVar(&optInOpts.nodeName, "node", "", "MachineConfig name")
+	optInCmd.PersistentFlags().StringVar(&optInOpts.nodeName, "node", "", "Node name")
 
 	rootCmd.AddCommand(optInCmd)
 }

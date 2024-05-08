@@ -47,6 +47,8 @@ func runOptOutCmd(optOutOpts optInAndOutOpts) error {
 }
 
 func optOutNode(cs *framework.ClientSet, nodeName, poolName string, force bool) error {
+	klog.Warningf("WARNING! You will need to recover the node manually if you do this!")
+
 	workerMCP, err := cs.MachineConfigPools().Get(context.TODO(), "worker", metav1.GetOptions{})
 	if err != nil {
 		return err
