@@ -5,7 +5,6 @@ import (
 	"os"
 
 	mcfgv1alpha1 "github.com/openshift/api/machineconfiguration/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -21,6 +20,22 @@ type opts struct {
 	waitForBuildInfo            bool
 	copyEtcPkiEntitlementSecret bool
 	enableFeatureGate           bool
+}
+
+func (o *opts) deepCopy() opts {
+	return opts{
+		pushSecretName:              o.pushSecretName,
+		pullSecretName:              o.pullSecretName,
+		pushSecretPath:              o.pushSecretPath,
+		pullSecretPath:              o.pullSecretPath,
+		finalImagePullspec:          o.finalImagePullspec,
+		containerfilePath:           o.containerfilePath,
+		poolName:                    o.poolName,
+		injectYumRepos:              o.injectYumRepos,
+		waitForBuildInfo:            o.waitForBuildInfo,
+		copyEtcPkiEntitlementSecret: o.copyEtcPkiEntitlementSecret,
+		enableFeatureGate:           o.enableFeatureGate,
+	}
 }
 
 func (o *opts) getContainerfileContent() (string, error) {
@@ -65,44 +80,15 @@ func (o *opts) toMachineOSConfig() (*mcfgv1alpha1.MachineOSConfig, error) {
 		return nil, err
 	}
 
-	mosc := &mcfgv1alpha1.MachineOSConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: o.poolName,
-			Labels: map[string]string{
-				createdByOnClusterBuildsHelper: "",
-			},
-		},
-		Spec: mcfgv1alpha1.MachineOSConfigSpec{
-			MachineConfigPool: mcfgv1alpha1.MachineConfigPoolReference{
-				Name: o.poolName,
-			},
-			BuildInputs: mcfgv1alpha1.BuildInputs{
-				BaseImagePullSecret: mcfgv1alpha1.ImageSecretObjectReference{
-					Name: globalPullSecretCloneName,
-				},
-				RenderedImagePushSecret: mcfgv1alpha1.ImageSecretObjectReference{
-					Name: pushSecretName,
-				},
-				RenderedImagePushspec: o.finalImagePullspec,
-				ImageBuilder: &mcfgv1alpha1.MachineOSImageBuilder{
-					ImageBuilderType: mcfgv1alpha1.PodBuilder,
-				},
-				Containerfile: []mcfgv1alpha1.MachineOSContainerfile{
-					{
-						ContainerfileArch: mcfgv1alpha1.NoArch,
-						Content:           containerfileContents,
-					},
-				},
-			},
-			BuildOutputs: mcfgv1alpha1.BuildOutputs{
-				CurrentImagePullSecret: mcfgv1alpha1.ImageSecretObjectReference{
-					Name: pullSecretName,
-				},
-			},
-		},
+	moscOpts := moscOpts{
+		poolName:              o.poolName,
+		containerfileContents: containerfileContents,
+		pullSecretName:        pullSecretName,
+		pushSecretName:        pushSecretName,
+		finalImagePullspec:    o.finalImagePullspec,
 	}
 
-	return mosc, nil
+	return newMachineOSConfig(moscOpts), nil
 }
 
 func (o *opts) getPullSecretName() (string, error) {

@@ -2,6 +2,7 @@ package remotecommand
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -115,7 +116,7 @@ func (e *ExecOpts) toStreamOptions() remotecommand.StreamOptions {
 }
 
 // This was adapted from: https://discuss.kubernetes.io/t/go-client-exec-ing-a-shel-command-in-pod/5354/5
-func ExecuteRemoteCommand(opts *ExecOpts) error {
+func ExecuteRemoteCommand(ctx context.Context, opts *ExecOpts) error {
 	// TODO: Figure out if this can use framework.ClientSet.
 	kubeCfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		clientcmd.NewDefaultClientConfigLoadingRules(),
@@ -148,7 +149,7 @@ func ExecuteRemoteCommand(opts *ExecOpts) error {
 		return err
 	}
 
-	if err := exec.Stream(streamOpts); err != nil {
+	if err := exec.StreamWithContext(ctx, streamOpts); err != nil {
 		return newExecError(opts, err)
 	}
 
@@ -156,6 +157,9 @@ func ExecuteRemoteCommand(opts *ExecOpts) error {
 }
 
 func PodHasCommand(pod *corev1.Pod, command string) (bool, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// See: https://stackoverflow.com/questions/2869100/how-to-find-directory-of-some-command
 	script := fmt.Sprintf("#!/bin/bash\ntype -a %s", command)
 
@@ -164,7 +168,7 @@ func PodHasCommand(pod *corev1.Pod, command string) (bool, error) {
 		Pod:     pod,
 	}
 
-	err := ExecuteRemoteCommand(&opts)
+	err := ExecuteRemoteCommand(ctx, &opts)
 
 	if err == nil {
 		return true, nil

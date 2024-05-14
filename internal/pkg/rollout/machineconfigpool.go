@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
@@ -129,8 +130,18 @@ func waitForMachineConfigPoolToCompleteWithContext(ctx context.Context, cs *fram
 				continue
 			}
 
+			mosb, err := utils.GetMachineOSBuildForPool(ctx, cs, mcp)
+			if err != nil {
+				return false, err
+			}
+
+			mosc, err := utils.GetMachineOSConfigForPool(ctx, cs, mcp)
+			if err != nil {
+				return false, err
+			}
+
 			ns := ctrlcommon.NewLayeredNodeState(&node)
-			if ns.IsDoneAt(mcp) {
+			if ns.IsDoneAt(mcp, mosc != nil && mosb != nil) {
 				doneNodes.Insert(node.Name)
 				diff := sets.List(nodesForPool.Difference(doneNodes))
 				klog.Infof("Node %s in pool %s has completed its update after %s. %d node(s) remaining: %v", node.Name, poolName, time.Since(start), len(diff), diff)

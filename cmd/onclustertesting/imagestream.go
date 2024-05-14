@@ -18,6 +18,14 @@ const (
 	imagestreamPullspec string = "image-registry.openshift-image-registry.svc:5000/" + ctrlcommon.MCONamespace + "/" + imagestreamName + ":latest"
 )
 
+func createImagestreamAndGetPullspec(cs *framework.ClientSet, name string) (string, error) {
+	if err := createImagestream(cs, name); err != nil {
+		return "", err
+	}
+
+	return getImagestreamPullspec(cs, name)
+}
+
 func getImagestreamPullspec(cs *framework.ClientSet, name string) (string, error) {
 	is, err := cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {

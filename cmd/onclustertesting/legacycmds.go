@@ -14,7 +14,6 @@ func init() {
 		"ENABLE_EXTRACT_COMMAND":       legacycmds.ExtractCommand,
 		"ENABLE_CLEAR_STATUS_COMMAND":  legacycmds.ClearStatusCommand,
 		"ENABLE_MACHINECONFIG_COMMAND": legacycmds.MachineConfigCommand,
-		"ENABLE_RENDER_COMMAND":        legacycmds.RenderCommand,
 	}
 
 	for envVarName, cmd := range cmds {
