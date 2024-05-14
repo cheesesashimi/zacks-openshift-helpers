@@ -11,6 +11,9 @@ def create_build(name):
         "main": f"./cmd/{name}",
         "id": name,
         "binary": name,
+        "env": [
+            "CGO_ENABLED=0",
+        ],
         "goos": [
             "darwin",
             "linux",

@@ -13,3 +13,5 @@ cmd/onclustertesting/onclustertesting
 cmd/run-on-all-nodes/run-on-all-nodes
 # Auto-added by update-configs.py to ignore ad-hoc Go binaries
 cmd/wait-for-mcp/wait-for-mcp
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+cmd/mcdiff/mcdiff

@@ -12,6 +12,8 @@ before:
   - go test -count=1 -v ./...
 builds:
 - binary: cluster-lifecycle
+  env:
+  - CGO_ENABLED=0
   goarch:
   - amd64
   - arm64
@@ -21,6 +23,8 @@ builds:
   id: cluster-lifecycle
   main: ./cmd/cluster-lifecycle
 - binary: mco-builder
+  env:
+  - CGO_ENABLED=0
   goarch:
   - amd64
   - arm64
@@ -30,6 +34,8 @@ builds:
   id: mco-builder
   main: ./cmd/mco-builder
 - binary: mco-push
+  env:
+  - CGO_ENABLED=0
   goarch:
   - amd64
   - arm64
@@ -39,6 +45,8 @@ builds:
   id: mco-push
   main: ./cmd/mco-push
 - binary: onclustertesting
+  env:
+  - CGO_ENABLED=0
   goarch:
   - amd64
   - arm64
@@ -48,6 +56,8 @@ builds:
   id: onclustertesting
   main: ./cmd/onclustertesting
 - binary: run-on-all-nodes
+  env:
+  - CGO_ENABLED=0
   goarch:
   - amd64
   - arm64
@@ -57,6 +67,8 @@ builds:
   id: run-on-all-nodes
   main: ./cmd/run-on-all-nodes
 - binary: wait-for-mcp
+  env:
+  - CGO_ENABLED=0
   goarch:
   - amd64
   - arm64
