@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/component-base/cli"
+	"k8s.io/klog"
 
 	"golang.org/x/sync/errgroup"
 
@@ -28,6 +30,8 @@ type runOpts struct {
 	labelSelector string
 	keepGoing     bool
 	writeLogs     bool
+	json          bool
+	exitZero      bool
 }
 
 func main() {
@@ -54,6 +58,8 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&opts.labelSelector, "label-selector", "", "Label selector for nodes.")
 	rootCmd.PersistentFlags().BoolVar(&opts.keepGoing, "keep-going", false, "Do not stop on first command error")
 	rootCmd.PersistentFlags().BoolVar(&opts.writeLogs, "write-logs", false, "Write command logs to disk under $PWD/<nodename>.log")
+	rootCmd.PersistentFlags().BoolVar(&opts.json, "json", false, "Write output in JSON format")
+	rootCmd.PersistentFlags().BoolVar(&opts.exitZero, "exit-zero", false, "Return zero even if a command fails")
 
 	os.Exit(cli.Run(rootCmd))
 }
@@ -80,7 +86,7 @@ func getNodeNames(nodes *corev1.NodeList) []string {
 	return names
 }
 
-func runCommand(outChan chan string, node *corev1.Node, opts runOpts) error {
+func runCommand(outChan chan output, node *corev1.Node, opts runOpts) error {
 	cmd := exec.Command("oc", "debug", fmt.Sprintf("node/%s", node.Name), "--", "chroot", "/host", "/bin/bash", "-c", opts.command)
 
 	stdout := bytes.NewBuffer([]byte{})
@@ -93,30 +99,26 @@ func runCommand(outChan chan string, node *corev1.Node, opts runOpts) error {
 
 	runErr := cmd.Run()
 
+	out := output{
+		RemoteCommand: opts.command,
+		LocalCommand:  cmd.String(),
+		node:          node,
+		stdout:        stdout,
+		stderr:        stderr,
+		err:           runErr,
+	}
+
 	// If we're not supposed to keep going and we encounter an error, stop here.
 	if !opts.keepGoing && runErr != nil {
 		return fmt.Errorf("could not run command %s, stdout %q, stderr %q: %w", cmd, stdout.String(), stderr.String(), runErr)
 	}
 
-	out := &strings.Builder{}
-	fmt.Fprintf(out, "[%s - %v]:\n", node.Name, getNodeRoles(node))
-	fmt.Fprintf(out, "$ %s\n", opts.command)
-	fmt.Fprintln(out, stdout.String())
-	fmt.Fprintln(out, stderr.String())
-
-	// If we get here, it means that an error has occurred, so lets include that
-	// the log output.
-	if runErr != nil {
-		fmt.Fprintln(out, "Full invocation:", cmd.String())
-		fmt.Fprintln(out, "Error:", runErr)
-	}
-
 	logFileName := fmt.Sprintf("%s.log", node.Name)
 	if opts.writeLogs {
-		fmt.Fprintf(out, "Writing log to %s\n", logFileName)
+		klog.Infof("Writing log to %s", logFileName)
 	}
 
-	outChan <- out.String()
+	outChan <- out
 
 	if opts.writeLogs {
 		return os.WriteFile(logFileName, stdout.Bytes(), 0o644)
@@ -130,15 +132,6 @@ func runCommand(outChan chan string, node *corev1.Node, opts runOpts) error {
 func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
 	eg := new(errgroup.Group)
 
-	outChan := make(chan string)
-
-	// Spawn a separate logging Goroutine so that outputs are not interweaved.
-	go func() {
-		for msg := range outChan {
-			fmt.Println(msg)
-		}
-	}()
-
 	// Spwan a separate error-collection Goroutine so that we can collect all errors
 	// received to determine the exit code.
 	errChan := make(chan error)
@@ -147,6 +140,27 @@ func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
 	go func() {
 		for err := range errChan {
 			errs = append(errs, err)
+		}
+	}()
+
+	outChan := make(chan output)
+
+	// Spawn a separate logging Goroutine so that outputs are not interweaved.
+	go func() {
+		for msg := range outChan {
+			if !opts.json {
+				klog.Info(msg)
+				continue
+			}
+
+			out, err := json.Marshal(msg)
+			if err != nil {
+				// Send the error to the error channel for later handling / processing.
+				errChan <- err
+				klog.Errorf("could not write output from node %s: %s", msg.node.Name, err)
+			}
+
+			klog.Info(string(out))
 		}
 	}()
 
@@ -196,7 +210,7 @@ func runOnAllNodes(opts runOpts) error {
 
 	if opts.labelSelector != "" {
 		listOpts.LabelSelector = opts.labelSelector
-		fmt.Println("Using label selector:", opts.labelSelector)
+		klog.Info("Using label selector:", opts.labelSelector)
 	}
 
 	nodes, err := cs.CoreV1Interface.Nodes().List(context.TODO(), listOpts)
@@ -204,8 +218,15 @@ func runOnAllNodes(opts runOpts) error {
 		return err
 	}
 
-	fmt.Println("Running on nodes:", getNodeNames(nodes))
-	fmt.Println("")
+	klog.Info("Running on nodes:", getNodeNames(nodes))
+	klog.Info("")
 
-	return runCommandOnAllNodes(nodes, opts)
+	err = runCommandOnAllNodes(nodes, opts)
+	if opts.exitZero {
+		klog.Info("--exit-zero set, will return zero even though the following error(s) occurred")
+		klog.Error(err)
+		return nil
+	}
+
+	return err
 }
