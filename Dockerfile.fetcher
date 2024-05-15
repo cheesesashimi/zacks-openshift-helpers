@@ -1,0 +1,19 @@
+# Some of the binaries shell out to the "oc" command, so we should include that
+# in our image. This file acts as the fetcher image to retrieve the binaries.
+# It is embedded into Dockerfile.goreleaser by the hack/update-configs.py
+# script.
+
+FROM quay.io/fedora/fedora:40 AS fetcher
+WORKDIR /oc
+RUN <<EOF
+#!/usr/bin/env bash
+set -xeuo
+
+if [[ "$(uname -m)" == "x86_64" ]]; then
+  curl -L "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz" | tar xz
+fi
+
+if [[ "$(uname -m)" == "aarch64"  ]]; then
+  curl -L "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux-arm64.tar.gz" | tar xz
+fi
+EOF
