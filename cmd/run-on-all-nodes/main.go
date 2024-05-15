@@ -19,6 +19,7 @@ import (
 	versioncmd "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
+	aggerrs "k8s.io/apimachinery/pkg/util/errors"
 )
 
 type runOpts struct {
@@ -83,21 +84,32 @@ func runCommand(outChan chan string, node *corev1.Node, opts runOpts) error {
 	cmd := exec.Command("oc", "debug", fmt.Sprintf("node/%s", node.Name), "--", "chroot", "/host", "/bin/bash", "-c", opts.command)
 
 	stdout := bytes.NewBuffer([]byte{})
+	stderr := bytes.NewBuffer([]byte{})
 	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	cmd.Env = utils.ToEnvVars(map[string]string{
 		"KUBECONFIG": opts.kubeconfig,
 	})
 
-	err := cmd.Run()
+	runErr := cmd.Run()
 
-	if !opts.keepGoing && err != nil {
-		return fmt.Errorf("could not run command %s: %w", cmd, err)
+	// If we're not supposed to keep going and we encounter an error, stop here.
+	if !opts.keepGoing && runErr != nil {
+		return fmt.Errorf("could not run command %s, stdout %q, stderr %q: %w", cmd, stdout.String(), stderr.String(), runErr)
 	}
 
 	out := &strings.Builder{}
 	fmt.Fprintf(out, "[%s - %v]:\n", node.Name, getNodeRoles(node))
 	fmt.Fprintf(out, "$ %s\n", opts.command)
 	fmt.Fprintln(out, stdout.String())
+	fmt.Fprintln(out, stderr.String())
+
+	// If we get here, it means that an error has occurred, so lets include that
+	// the log output.
+	if runErr != nil {
+		fmt.Fprintln(out, "Full invocation:", cmd.String())
+		fmt.Fprintln(out, "Error:", runErr)
+	}
 
 	logFileName := fmt.Sprintf("%s.log", node.Name)
 	if opts.writeLogs {
@@ -110,7 +122,9 @@ func runCommand(outChan chan string, node *corev1.Node, opts runOpts) error {
 		return os.WriteFile(logFileName, stdout.Bytes(), 0o644)
 	}
 
-	return nil
+	// Return this at the end so that the caller can determine what to do about
+	// it.
+	return runErr
 }
 
 func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
@@ -125,11 +139,32 @@ func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
 		}
 	}()
 
+	// Spwan a separate error-collection Goroutine so that we can collect all errors
+	// received to determine the exit code.
+	errChan := make(chan error)
+
+	errs := []error{}
+	go func() {
+		for err := range errChan {
+			errs = append(errs, err)
+		}
+	}()
+
 	for _, node := range nodes.Items {
 		node := node
 		// For each node, spawn an oc command and run the provided command on the node.
 		eg.Go(func() error {
-			return runCommand(outChan, &node, opts)
+			err := runCommand(outChan, &node, opts)
+			// If we should keep going, collect the error via the error channel.
+			if opts.keepGoing {
+				errChan <- err
+				return nil
+			}
+
+			// If we should not keep going, return the error value directly. A single
+			// error will stop all other running goroutines since we're using an
+			// Errorgroup.
+			return err
 		})
 	}
 
@@ -138,8 +173,9 @@ func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
 	}
 
 	close(outChan)
+	close(errChan)
 
-	return nil
+	return aggerrs.NewAggregate(errs)
 }
 
 func runOnAllNodes(opts runOpts) error {
