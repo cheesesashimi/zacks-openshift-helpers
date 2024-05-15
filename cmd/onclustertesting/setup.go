@@ -3,17 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/rollout"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	configv1 "github.com/openshift/api/config/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -44,14 +40,6 @@ func init() {
 		Use:   "ci",
 		Short: "Sets up a cluster for on-cluster builds in a CI context.",
 		Long:  "",
-		PreRun: func(cmd *cobra.Command, _ []string) {
-			cmd.PersistentFlags().VisitAll(func(flag *pflag.Flag) {
-				if flag.Name != "containerfile-path" {
-					fmt.Println("nilling", flag.Name)
-					flag = nil
-				}
-			})
-		},
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return runCiSetupCmd(setupOpts)
 		},
@@ -161,83 +149,6 @@ func runInClusterRegistrySetupCmd(setupOpts opts) error {
 	setupOpts.finalImagePullspec = pullspec
 
 	return mobSetup(cs, setupOpts)
-}
-
-func runCiSetupCmd(setupOpts opts) error {
-	utils.ParseFlags()
-
-	if setupOpts.injectYumRepos && setupOpts.copyEtcPkiEntitlementSecret {
-		return fmt.Errorf("flags --inject-yum-repos and --copy-etc-pki-entitlement cannot be combined")
-	}
-
-	cs := framework.NewClientSet("")
-
-	if err := checkForRequiredFeatureGates(cs, setupOpts); err != nil {
-		return err
-	}
-
-	pushSecretName, err := getBuilderPushSecretName(cs)
-	if err != nil {
-		return err
-	}
-
-	setupOpts.pushSecretName = pushSecretName
-
-	eg := errgroup.Group{}
-
-	eg.Go(func() error {
-		return createSecrets(cs, setupOpts)
-	})
-
-	eg.Go(func() error {
-		return setupMoscForCI(cs, setupOpts.deepCopy(), "master")
-	})
-
-	eg.Go(func() error {
-		return setupMoscForCI(cs, setupOpts.deepCopy(), "worker")
-	})
-
-	if err := eg.Wait(); err != nil {
-		return err
-	}
-
-	eg = errgroup.Group{}
-
-	eg.Go(func() error {
-		return waitForBuildToComplete(cs, "master")
-	})
-
-	eg.Go(func() error {
-		return waitForBuildToComplete(cs, "worker")
-	})
-
-	if err := eg.Wait(); err != nil {
-		return err
-	}
-
-	return rollout.WaitForAllMachineConfigPoolsToComplete(cs, time.Minute*15)
-}
-
-func setupMoscForCI(cs *framework.ClientSet, opts opts, poolName string) error {
-	opts.poolName = poolName
-
-	pullspec, err := createImagestreamAndGetPullspec(cs, poolName)
-	if err != nil && !apierrs.IsAlreadyExists(err) {
-		return err
-	}
-
-	opts.finalImagePullspec = pullspec
-
-	mosc, err := opts.toMachineOSConfig()
-	if err != nil {
-		return err
-	}
-
-	if err := createMachineOSConfig(cs, mosc); err != nil && !apierrs.IsAlreadyExists(err) {
-		return err
-	}
-
-	return nil
 }
 
 func mobSetup(cs *framework.ClientSet, setupOpts opts) error {

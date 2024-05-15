@@ -167,14 +167,11 @@ func isBuildDone(mosb *mcfgv1alpha1.MachineOSBuild, err error) (bool, error) {
 	return state.IsBuildSuccess(), nil
 }
 
-func waitForBuildToComplete(cs *framework.ClientSet, poolName string) error {
-	return waitForMachineOSBuildToReachState(cs, poolName, isBuildDone)
+func waitForBuildToComplete(ctx context.Context, cs *framework.ClientSet, poolName string) error {
+	return waitForMachineOSBuildToReachState(ctx, cs, poolName, isBuildDone)
 }
 
-func waitForMachineOSBuildToReachState(cs *framework.ClientSet, poolName string, condFunc func(*mcfgv1alpha1.MachineOSBuild, error) (bool, error)) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*15)
-	defer cancel()
-
+func waitForMachineOSBuildToReachState(ctx context.Context, cs *framework.ClientSet, poolName string, condFunc func(*mcfgv1alpha1.MachineOSBuild, error) (bool, error)) error {
 	// TODO: This may eventually need to be moved into the loop to check if the
 	// MachineConfigPool gets a new MachineConfig while the build is starting.
 	mcp, err := cs.MachineconfigurationV1Interface.MachineConfigPools().Get(context.TODO(), poolName, metav1.GetOptions{})
@@ -186,6 +183,12 @@ func waitForMachineOSBuildToReachState(cs *framework.ClientSet, poolName string,
 		mosb, err := utils.GetMachineOSBuildForPool(ctx, cs, mcp)
 		if err != nil {
 			return false, err
+		}
+
+		// There is a lag between when the MachineOSConfig is created and the
+		// MachineOSBuild object gets created and is available.
+		if mosb == nil {
+			return false, nil
 		}
 
 		return condFunc(mosb, err)
