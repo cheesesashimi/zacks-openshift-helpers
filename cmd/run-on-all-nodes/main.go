@@ -21,12 +21,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	version = "not-built-properly"
-	commit  = "not-built-properly"
-	date    = "not-built-properly"
-)
-
 type runOpts struct {
 	command       string
 	kubeconfig    string
@@ -55,7 +49,7 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
-	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
+	rootCmd.AddCommand(versioncmd.Command())
 	rootCmd.PersistentFlags().StringVar(&opts.labelSelector, "label-selector", "", "Label selector for nodes.")
 	rootCmd.PersistentFlags().BoolVar(&opts.keepGoing, "keep-going", false, "Do not stop on first command error")
 	rootCmd.PersistentFlags().BoolVar(&opts.writeLogs, "write-logs", false, "Write command logs to disk under $PWD/<nodename>.log")

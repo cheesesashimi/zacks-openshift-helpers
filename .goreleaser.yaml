@@ -21,6 +21,11 @@ builds:
   - darwin
   - linux
   id: cluster-lifecycle
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/cluster-lifecycle
 - binary: mco-builder
   env:
@@ -32,6 +37,11 @@ builds:
   - darwin
   - linux
   id: mco-builder
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/mco-builder
 - binary: mco-push
   env:
@@ -43,6 +53,11 @@ builds:
   - darwin
   - linux
   id: mco-push
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/mco-push
 - binary: onclustertesting
   env:
@@ -54,6 +69,11 @@ builds:
   - darwin
   - linux
   id: onclustertesting
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/onclustertesting
 - binary: run-on-all-nodes
   env:
@@ -65,6 +85,11 @@ builds:
   - darwin
   - linux
   id: run-on-all-nodes
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/run-on-all-nodes
 - binary: wait-for-mcp
   env:
@@ -76,6 +101,11 @@ builds:
   - darwin
   - linux
   id: wait-for-mcp
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/wait-for-mcp
 changelog:
   filters:

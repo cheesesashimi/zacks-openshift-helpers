@@ -18,15 +18,9 @@ var (
 	}
 )
 
-var (
-	version = "not-built-properly"
-	commit  = "not-built-properly"
-	date    = "not-built-properly"
-)
-
 func init() {
 	rootCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
-	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
+	rootCmd.AddCommand(versioncmd.Command())
 }
 
 func main() {

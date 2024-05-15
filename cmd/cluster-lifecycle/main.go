@@ -19,12 +19,6 @@ const (
 )
 
 var (
-	version = "not-built-properly"
-	commit  = "not-built-properly"
-	date    = "not-built-properly"
-)
-
-var (
 	rootCmd = &cobra.Command{
 		Use:   "cluster-lifecycle",
 		Short: "Helps bring up and tear down an OpenShift cluster for testing and development purposes",
@@ -34,7 +28,7 @@ var (
 
 func init() {
 	rootCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
-	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
+	rootCmd.AddCommand(versioncmd.Command())
 }
 
 func main() {

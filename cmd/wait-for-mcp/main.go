@@ -13,12 +13,6 @@ import (
 	versioncmd "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version"
 )
 
-var (
-	version = "not-built-properly"
-	commit  = "not-built-properly"
-	date    = "not-built-properly"
-)
-
 func main() {
 	var timeout string
 
@@ -31,7 +25,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(versioncmd.Command(version, commit, date))
+	rootCmd.AddCommand(versioncmd.Command())
 	rootCmd.PersistentFlags().StringVar(&timeout, "timeout", "15m", "Timeout expressed in 0h0m0s format.")
 
 	os.Exit(cli.Run(rootCmd))

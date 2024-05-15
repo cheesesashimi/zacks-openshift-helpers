@@ -14,6 +14,12 @@ def create_build(name):
         "env": [
             "CGO_ENABLED=0",
         ],
+        "ldflags": [
+            "-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser".replace(
+                "main",
+                "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version",
+            ),
+        ],
         "goos": [
             "darwin",
             "linux",
