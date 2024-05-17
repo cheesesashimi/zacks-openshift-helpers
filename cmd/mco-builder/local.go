@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -134,6 +135,10 @@ func runLocalCmd(opts localBuildOpts) error {
 	cs := framework.NewClientSet("")
 
 	if err := validateLocalAndClusterArches(cs); err != nil {
+		if !errors.Is(err, errInvalidArch) {
+			return err
+		}
+
 		// TODO: Return the error here instead. Need to validate GOARCH against Linux ARM64 and Darwin ARM64.
 		klog.Warning(err)
 	}
@@ -286,6 +291,8 @@ func buildLocallyAndPushIntoCluster(cs *framework.ClientSet, buildOpts localBuil
 	return nil
 }
 
+var errInvalidArch = fmt.Errorf("local and cluster arch differ")
+
 func validateLocalAndClusterArches(cs *framework.ClientSet) error {
 	nodes, err := cs.CoreV1Interface.Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -296,7 +303,7 @@ func validateLocalAndClusterArches(cs *framework.ClientSet) error {
 	clusterArch := nodes.Items[0].Status.NodeInfo.Architecture
 
 	if clusterArch != runtime.GOARCH {
-		return fmt.Errorf("local (%s) / cluster (%s) architecture mismatch", runtime.GOARCH, clusterArch)
+		return fmt.Errorf("local (%s) / cluster (%s): %w", runtime.GOARCH, clusterArch, errInvalidArch)
 	}
 
 	klog.Infof("Local (%s) arch matches cluster (%s)", runtime.GOARCH, clusterArch)
