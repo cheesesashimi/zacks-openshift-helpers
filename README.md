@@ -22,7 +22,7 @@ Releases](https://github.com/cheesesashimi/zacks-openshift-helpers/releases)
 page. All one has to do is download them and place them somewhere in your
 `PATH`.
 
-These binaries are built with [goreleaser](https://goreleaser.com/) running as
+These binaries are built using [goreleaser](https://goreleaser.com/) running as
 a GitHub Action. If you're using a Mac, you'll need to [jump through a few
 hoops](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac)
 to make these work for right now.
@@ -32,16 +32,25 @@ addition to the current archive scheme.
 
 ### Containers
 
-If you'd rather `podman pull` something, these binaries are baked into the
-following images along with some of my other favorite K8s helpers:
+Starting with `v0.0.21`, you can `podman pull
+quay.io/zzlotnik/zacks-openshift-helpers:latest` to get the latest version of
+these binaries. Images are built for both AMD64 and ARM64 architectures. These
+images also contain the latest stable versions of the `oc` and `kubectl`
+commands since there are some portions of my helper binaries that shell out to
+these commands in order to take the path of least resistance.
+
+Full list of tags may be found [here](https://quay.io/repository/zzlotnik/zacks-openshift-helpers?tab=tags).
+
+It is also worth noting that these binaries are also baked into the following
+images as well, along with a few other of my favorite tools for working with
+Kubernetes clusters:
 
 - `quay.io/zzlotnik/toolbox:mco-fedora-39`
 - `quay.io/zzlotnik/toolbox:mco-fedora-40`
 
-**Note:** Although these images are rebuilt daily, there will be up to a
-24-hour delay between when the latest binaries are made available here and when
-they are available in those images. However, I plan to produce a container
-image specifically from this repo for future consumption.
+*Note:* Although these images are rebuilt daily, there will be up to a 24-hour
+delay between when the latest binaries are made available here and when they
+are available in those images.
 
 ## Further Notes
 
@@ -49,3 +58,4 @@ image specifically from this repo for future consumption.
 - I purposely put all of my code under an `internal/` directory as I do not
   want this repository to be depended on for right now. However, that might change in the future.
 - I have a cron job that periodically deletes recently-run GitHub Actions.
+- As of `v0.0.20`, the binaries are no longer built with CGO enabled.
