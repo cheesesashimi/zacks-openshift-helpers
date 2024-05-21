@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
 )
 
 type output struct {
@@ -41,14 +44,52 @@ func (o output) MarshalJSON() ([]byte, error) {
 		Node          string   `json:"node"`
 		Stdout        string   `json:"stdout"`
 		Stderr        string   `json:"stderr"`
+		Error         string   `json:"error,omitempty"`
 	}
 
-	return json.Marshal(out{
+	jsonOut := out{
 		LocalCommand:  o.LocalCommand,
 		RemoteCommand: o.RemoteCommand,
 		Node:          o.node.Name,
 		Stdout:        o.stdout.String(),
 		Stderr:        o.stderr.String(),
 		NodeRoles:     getNodeRoles(o.node),
+	}
+
+	if o.err != nil {
+		jsonOut.Error = o.err.Error()
+	}
+
+	return json.Marshal(jsonOut)
+}
+
+func (o output) ToFile() error {
+	writeLog := func(node *corev1.Node, streamName string, buf *bytes.Buffer) error {
+		logFileName := fmt.Sprintf("%s-%s.log", node.Name, streamName)
+		klog.Infof("Writing output to %s", logFileName)
+		return os.WriteFile(logFileName, buf.Bytes(), 0o644)
+	}
+
+	eg := errgroup.Group{}
+
+	eg.Go(func() error {
+		return writeLog(o.node, "stdout", o.stdout)
 	})
+
+	eg.Go(func() error {
+		return writeLog(o.node, "stderr", o.stderr)
+	})
+
+	return eg.Wait()
+}
+
+func (o output) ToJSONFile() error {
+	outBytes, err := json.Marshal(o)
+	if err != nil {
+		return err
+	}
+
+	filename := fmt.Sprintf("%s-results.json", o.node.Name)
+	klog.Infof("Writing output in JSON format to %s", filename)
+	return os.WriteFile(filename, outBytes, 0o644)
 }

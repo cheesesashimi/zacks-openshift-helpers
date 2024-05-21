@@ -30,6 +30,7 @@ type runOpts struct {
 	labelSelector string
 	keepGoing     bool
 	writeLogs     bool
+	writeJSONLogs bool
 	json          bool
 	exitZero      bool
 }
@@ -57,7 +58,8 @@ func main() {
 	rootCmd.AddCommand(versioncmd.Command())
 	rootCmd.PersistentFlags().StringVar(&opts.labelSelector, "label-selector", "", "Label selector for nodes.")
 	rootCmd.PersistentFlags().BoolVar(&opts.keepGoing, "keep-going", false, "Do not stop on first command error")
-	rootCmd.PersistentFlags().BoolVar(&opts.writeLogs, "write-logs", false, "Write command logs to disk under $PWD/<nodename>.log")
+	rootCmd.PersistentFlags().BoolVar(&opts.writeLogs, "write-logs", false, "Write command logs to disk under $PWD/<nodename>-{stdout,stderr}.log")
+	rootCmd.PersistentFlags().BoolVar(&opts.writeJSONLogs, "write-json-logs", false, "Write logs in JSON format to disk under $PWD/<nodename>-results.json")
 	rootCmd.PersistentFlags().BoolVar(&opts.json, "json", false, "Write output in JSON format")
 	rootCmd.PersistentFlags().BoolVar(&opts.exitZero, "exit-zero", false, "Return zero even if a command fails")
 
@@ -108,25 +110,42 @@ func runCommand(outChan chan output, node *corev1.Node, opts runOpts) error {
 		err:           runErr,
 	}
 
+	outChan <- out
+
 	// If we're not supposed to keep going and we encounter an error, stop here.
 	if !opts.keepGoing && runErr != nil {
 		return fmt.Errorf("could not run command %s, stdout %q, stderr %q: %w", cmd, stdout.String(), stderr.String(), runErr)
 	}
 
-	logFileName := fmt.Sprintf("%s.log", node.Name)
 	if opts.writeLogs {
-		klog.Infof("Writing log to %s", logFileName)
+		return aggerrs.NewAggregate([]error{out.ToFile(), runErr})
 	}
 
-	outChan <- out
-
-	if opts.writeLogs {
-		return os.WriteFile(logFileName, stdout.Bytes(), 0o644)
+	if opts.writeJSONLogs {
+		return aggerrs.NewAggregate([]error{out.ToJSONFile(), runErr})
 	}
 
-	// Return this at the end so that the caller can determine what to do about
-	// it.
 	return runErr
+}
+
+func writeToLogs(out output) error {
+	writeLog := func(node *corev1.Node, streamName string, buf *bytes.Buffer) error {
+		logFileName := fmt.Sprintf("%s-%s.log", node.Name, streamName)
+		klog.Infof("Writing output to %s", logFileName)
+		return os.WriteFile(logFileName, buf.Bytes(), 0o644)
+	}
+
+	eg := errgroup.Group{}
+
+	eg.Go(func() error {
+		return writeLog(out.node, "stdout", out.stdout)
+	})
+
+	eg.Go(func() error {
+		return writeLog(out.node, "stderr", out.stderr)
+	})
+
+	return eg.Wait()
 }
 
 func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
@@ -169,15 +188,15 @@ func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
 		// For each node, spawn an oc command and run the provided command on the node.
 		eg.Go(func() error {
 			err := runCommand(outChan, &node, opts)
-			// If we should keep going, collect the error via the error channel.
+			// If we should keep going, collect the error via the error channel for
+			// future processing.
 			if opts.keepGoing {
 				errChan <- err
 				return nil
 			}
 
-			// If we should not keep going, return the error value directly. A single
-			// error will stop all other running goroutines since we're using an
-			// Errorgroup.
+			// If we should not keep going, return the error value directly. This
+			// will stop all of the other goroutines in this errorgroup.
 			return err
 		})
 	}
@@ -195,6 +214,10 @@ func runCommandOnAllNodes(nodes *corev1.NodeList, opts runOpts) error {
 func runOnAllNodes(opts runOpts) error {
 	if err := utils.CheckForBinaries([]string{"oc"}); err != nil {
 		return err
+	}
+
+	if opts.writeLogs && opts.writeJSONLogs {
+		return fmt.Errorf("--write-logs and --write-json-logs cannot be combined")
 	}
 
 	cs := framework.NewClientSet("")

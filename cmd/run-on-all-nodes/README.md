@@ -13,13 +13,16 @@ Available Commands:
   version     Print the current version
 
 Flags:
+      --exit-zero                      Return zero even if a command fails
   -h, --help                           help for run-on-all-nodes
+      --json                           Write output in JSON format
       --keep-going                     Do not stop on first command error
       --kubeconfig string              Paths to a kubeconfig. Only required if out-of-cluster.
       --label-selector string          Label selector for nodes.
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
   -v, --v Level                        number for the log level verbosity
       --vmodule moduleSpec             comma-separated list of pattern=N settings for file-filtered logging (only works for the default text log format)
+      --write-logs                     Write command logs to disk under $PWD/<nodename>.log
 
 Use "run-on-all-nodes [command] --help" for more information about a command.
 ```
@@ -234,3 +237,7 @@ binaries available on the host.
 For speed, we spawn multiple concurrent instances of `oc debug` and wait for
 them to complete. Care is taken to ensure that output from each command is kept
 separate so there will be no output interleaving.
+
+## Notes
+- If a single command encounters an error, the rest of the commands may not execute. This behavior can be overridden using the `--keep-going` flag.
+- The `--exit-zero` flag will cause `run-on-all-nodes` to exit with the exit code `0`, even when an error is encountered. This can be useful for running investigative commands that you know will fail.
