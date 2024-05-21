@@ -60,6 +60,11 @@ def create_docker_for_arch(builds, arch):
             "--label=org.opencontainers.image.version={{ .Version }}",
             '--label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}',
             "--label=org.opencontainers.image.revision={{ .FullCommit }}",
+            '{{ if index .Env "GITHUB_ACTIONS" }}--label=com.github.actions={{else}}--label={{end}}',
+            '{{ if index .Env "GITHUB_RUN_ID" }}--label=com.github.actions.runId={{ .Env.GITHUB_RUN_ID }}{{else}}--label={{end}}',
+            '{{ if index .Env "GITHUB_RUN_NUMBER" }}--label=com.github.actions.runNumber={{ .Env.GITHUB_RUN_NUMBER }}{{else}}--label={{end}}',
+            '{{ if index .Env "GITHUB_WORKFLOW" }}--label=com.github.actions.workflow={{ .Env.GITHUB_WORKFLOW }}{{else}}--label={{end}}',
+            '{{ if index .Env "RUNNER_NAME" }}--label=com.github.actions.runnerName={{ .Env.RUNNER_NAME }}{{else}}--label={{end}}',
         ],
     }
 
@@ -153,7 +158,7 @@ def update_dockerfile(names):
 def main():
     names = sorted(sys.argv[1:])
 
-    ignored_names = frozenset(["mcdiff"])
+    ignored_names = frozenset(["mcdiff", "playground"])
 
     names = [name for name in names if name not in ignored_names]
 
