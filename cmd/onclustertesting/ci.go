@@ -13,6 +13,11 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	controlPlanePoolName string = "master"
+	workerPoolName       string = "worker"
+)
+
 func runCiSetupCmd(setupOpts opts) error {
 	utils.ParseFlags()
 
@@ -68,11 +73,11 @@ func setupForCI(cs *framework.ClientSet, setupOpts opts) error {
 	})
 
 	eg.Go(func() error {
-		return setupMoscForCI(cs, setupOpts.deepCopy(), "master")
+		return setupMoscForCI(cs, setupOpts.deepCopy(), workerPoolName)
 	})
 
 	eg.Go(func() error {
-		return setupMoscForCI(cs, setupOpts.deepCopy(), "worker")
+		return setupMoscForCI(cs, setupOpts.deepCopy(), controlPlanePoolName)
 	})
 
 	if err := eg.Wait(); err != nil {
@@ -93,11 +98,11 @@ func waitForBuildsToComplete(cs *framework.ClientSet) error {
 	defer cancel()
 
 	eg.Go(func() error {
-		return waitForBuildToComplete(ctx, cs, "master")
+		return waitForBuildToComplete(ctx, cs, workerPoolName)
 	})
 
 	eg.Go(func() error {
-		return waitForBuildToComplete(ctx, cs, "worker")
+		return waitForBuildToComplete(ctx, cs, controlPlanePoolName)
 	})
 
 	if err := eg.Wait(); err != nil {
@@ -109,6 +114,12 @@ func waitForBuildsToComplete(cs *framework.ClientSet) error {
 
 func setupMoscForCI(cs *framework.ClientSet, opts opts, poolName string) error {
 	opts.poolName = poolName
+
+	if poolName != controlPlanePoolName && poolName != workerPoolName {
+		if _, err := createPool(cs, poolName); err != nil {
+			return err
+		}
+	}
 
 	pullspec, err := createImagestreamAndGetPullspec(cs, poolName)
 	if err != nil && !apierrs.IsAlreadyExists(err) {
@@ -122,7 +133,7 @@ func setupMoscForCI(cs *framework.ClientSet, opts opts, poolName string) error {
 		return err
 	}
 
-	if err := createMachineOSConfig(cs, mosc); err != nil && !apierrs.IsAlreadyExists(err) {
+	if err := createMachineOSConfig(cs, mosc); err != nil {
 		return err
 	}
 

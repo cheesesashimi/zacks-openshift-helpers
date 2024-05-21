@@ -119,4 +119,15 @@ The Containerfile will be read and injected into the MachineOSConfig for the
 MachineConfigPool that the tool creates.
 
 **Note:** The custom Containerfile must include a stage beginning with `FROM
-configs AS final` in order for your changes to be built into the final image.
+configs AS final` in order for your customizations to be built into the final image.
+
+### CI mode
+
+CI mode is a new subcommand under the `setup` command, which is intended to opt
+a given cluster into on-cluster layering so that a test suite (such as
+`openshift-e2e`) may be run against it. Using this command does the following:
+
+1. Creates two ImageStreams; one for the control-plane and one for the worker pool.
+2. Clones the global pull secret into the MCO namespace.
+3. Creates a MachineOSConfig for both the control-plane and worker pool. Then waits for the builds to complete.
+4. Waits for the newly-built image to roll out to each node in both the control-plane and worker pools.

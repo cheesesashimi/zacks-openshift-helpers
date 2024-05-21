@@ -17,7 +17,6 @@ require (
 	github.com/openshift/library-go v0.0.0-20240424194921-cb8aac942b79
 	github.com/openshift/machine-config-operator v0.0.1-0.20240511010639-4b809a4214f5
 	github.com/spf13/cobra v1.8.0
-	github.com/spf13/pflag v1.0.6-0.20210604193023-d5e0c0615ace
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.7.0
 	k8s.io/api v0.29.2
@@ -113,6 +112,7 @@ require (
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skeema/knownhosts v1.2.2 // indirect
+	github.com/spf13/pflag v1.0.6-0.20210604193023-d5e0c0615ace // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect

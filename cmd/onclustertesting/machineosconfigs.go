@@ -168,29 +168,57 @@ func isBuildDone(mosb *mcfgv1alpha1.MachineOSBuild, err error) (bool, error) {
 }
 
 func waitForBuildToComplete(ctx context.Context, cs *framework.ClientSet, poolName string) error {
-	return waitForMachineOSBuildToReachState(ctx, cs, poolName, isBuildDone)
-}
+	isExists := false
+	isPending := false
+	isBuilding := false
+	isSuccess := false
 
-func waitForMachineOSBuildToReachState(ctx context.Context, cs *framework.ClientSet, poolName string, condFunc func(*mcfgv1alpha1.MachineOSBuild, error) (bool, error)) error {
-	// TODO: This may eventually need to be moved into the loop to check if the
-	// MachineConfigPool gets a new MachineConfig while the build is starting.
-	mcp, err := cs.MachineconfigurationV1Interface.MachineConfigPools().Get(context.TODO(), poolName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	return wait.PollUntilContextCancel(ctx, time.Second, true, func(_ context.Context) (bool, error) {
-		mosb, err := utils.GetMachineOSBuildForPool(ctx, cs, mcp)
-		if err != nil {
+	return waitForMachineOSBuildToReachState(ctx, cs, poolName, func(mosb *mcfgv1alpha1.MachineOSBuild, err error) (bool, error) {
+		// There is a lag between when the MachineOSConfig is created and the
+		// MachineOSBuild object gets created and is available.
+		if err != nil && !utils.IsNotFoundErr(err) {
 			return false, err
 		}
 
-		// There is a lag between when the MachineOSConfig is created and the
-		// MachineOSBuild object gets created and is available.
-		if mosb == nil {
+		// If the MachineOSBuild has not been created yet, try again later.
+		if utils.IsNotFoundErr(err) {
 			return false, nil
 		}
 
+		// If the MachineOSBuild exists, we can interrogate its state.
+		if !isExists && mosb != nil && err == nil {
+			isExists = true
+			klog.Infof("Build %s exists", mosb.Name)
+		}
+
+		state := ctrlcommon.NewMachineOSBuildState(mosb)
+
+		if !isPending && state.IsBuildPending() {
+			isPending = true
+			klog.Infof("Build %s is now pending", mosb.Name)
+		}
+
+		if !isBuilding && state.IsBuilding() {
+			isBuilding = true
+			klog.Infof("Build %s is now running", mosb.Name)
+		}
+
+		if !isSuccess && state.IsBuildSuccess() {
+			isSuccess = true
+			klog.Infof("Build %s is complete!", mosb.Name)
+		}
+
+		if state.IsBuildFailure() {
+			return false, fmt.Errorf("build %s failed", mosb.Name)
+		}
+
+		return false, nil
+	})
+}
+
+func waitForMachineOSBuildToReachState(ctx context.Context, cs *framework.ClientSet, poolName string, condFunc func(*mcfgv1alpha1.MachineOSBuild, error) (bool, error)) error {
+	return wait.PollUntilContextCancel(ctx, time.Second, true, func(funcCtx context.Context) (bool, error) {
+		mosb, err := utils.GetMachineOSBuildForPoolName(funcCtx, cs, poolName)
 		return condFunc(mosb, err)
 	})
 }
