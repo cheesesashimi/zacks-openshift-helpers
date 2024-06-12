@@ -56,7 +56,7 @@ func newMachineOSConfig(opts moscOpts) *mcfgv1alpha1.MachineOSConfig {
 			},
 			BuildOutputs: mcfgv1alpha1.BuildOutputs{
 				CurrentImagePullSecret: mcfgv1alpha1.ImageSecretObjectReference{
-					Name: opts.pullSecretName,
+					Name: opts.pushSecretName,
 				},
 			},
 		},
