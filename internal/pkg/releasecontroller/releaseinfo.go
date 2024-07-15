@@ -27,11 +27,14 @@ func GetComponentPullspecForRelease(componentName, releasePullspec string) (stri
 
 func GetReleaseInfo(releasePullspec string) ([]byte, error) {
 	outBuf := bytes.NewBuffer([]byte{})
+	stderrBuf := bytes.NewBuffer([]byte{})
+
 	cmd := exec.Command("oc", "adm", "release", "info", "-o=json", releasePullspec)
 	cmd.Stdout = outBuf
+	cmd.Stderr = stderrBuf
 
 	if err := cmd.Run(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not run %s, got output: %s %s", cmd, outBuf.String(), stderrBuf.String())
 	}
 
 	return outBuf.Bytes(), nil
