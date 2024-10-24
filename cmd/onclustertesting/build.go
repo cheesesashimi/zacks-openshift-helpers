@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"golang.org/x/sync/errgroup"
@@ -47,10 +48,13 @@ func extractAndInjectYumEpelRepos(cs *framework.ClientSet) error {
 			return err
 		}
 
-		return createSecret(cs, &corev1.Secret{
+		return utils.CreateOrRecreateSecret(cs, &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "etc-pki-rpm-gpg",
 				Namespace: ctrlcommon.MCONamespace,
+				Labels: map[string]string{
+					createdByOnClusterBuildsHelper: "",
+				},
 			},
 			Data: rpmGpgContents,
 		})

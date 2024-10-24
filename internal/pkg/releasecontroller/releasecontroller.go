@@ -12,6 +12,16 @@ import (
 
 type ReleaseController string
 
+func (r *ReleaseController) GetAllReleaseStreams() ([]string, error) {
+	tmp := map[string][]string{}
+	err := r.doHTTPRequestIntoStruct("/api/v1/releasestreams/all", &tmp)
+	out := []string{}
+	for key := range tmp {
+		out = append(out, key)
+	}
+	return out, err
+}
+
 func (r *ReleaseController) GetLatestReleaseForStream(stream string) (*Release, error) {
 	out := &Release{}
 	err := r.doHTTPRequestIntoStruct(filepath.Join("/api/v1/releasestream", stream, "latest"), out)

@@ -66,7 +66,7 @@ func installCluster(opts inputOpts) error {
 		return err
 	}
 
-	klog.Infof(installerVersion)
+	klog.Info(installerVersion)
 
 	cmd := exec.Command(opts.installerPath(), "create", "cluster", "--dir", opts.workDir, "--log-level", "debug")
 	cmd.Dir = opts.workDir
@@ -83,7 +83,7 @@ func destroyCluster(opts teardownOpts) error {
 		return err
 	}
 
-	klog.Infof(installerVersion)
+	klog.Info(installerVersion)
 
 	installerPath := filepath.Join(opts.workDir, "openshift-install")
 	cmd := exec.Command(installerPath, "destroy", "cluster", "--dir", opts.workDir, "--log-level", "debug")

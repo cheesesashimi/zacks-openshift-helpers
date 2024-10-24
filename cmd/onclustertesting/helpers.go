@@ -195,23 +195,56 @@ func deleteAllMachineConfigsForPool(cs *framework.ClientSet, mcp *mcfgv1.Machine
 }
 
 func deleteBuildObjects(cs *framework.ClientSet) error {
-	requirements := []string{
-		ctrlcommon.OSImageBuildPodLabel,
-		"machineconfiguration.openshift.io/targetMachineConfigPool",
-		"machineconfiguration.openshift.io/desiredConfig",
+	deletionSelectors, err := getSelectorsForDeletion()
+	if err != nil {
+		return err
 	}
 
-	selector := labels.NewSelector()
+	eg := errgroup.Group{}
 
-	for _, requirement := range requirements {
-		req, err := labels.NewRequirement(requirement, selection.Exists, []string{})
-		if err != nil {
-			return fmt.Errorf("could not add requirement %q to selector: %w", requirement, err)
+	for _, selector := range deletionSelectors {
+		selector := selector
+		eg.Go(func() error {
+			return deleteBuildObjectsForSelector(cs, selector)
+		})
+	}
+
+	return eg.Wait()
+}
+
+func getSelectorsForDeletion() ([]labels.Selector, error) {
+	selectors := []labels.Selector{}
+
+	requirementsLists := [][]string{
+		{
+			ctrlcommon.OSImageBuildPodLabel,
+			"machineconfiguration.openshift.io/targetMachineConfigPool",
+			"machineconfiguration.openshift.io/desiredConfig",
+		},
+		{
+			// TODO: Use constant for this.
+			"machineconfiguration.openshift.io/used-by-e2e-test",
+		},
+		{
+			createdByOnClusterBuildsHelper,
+		},
+	}
+
+	for _, requirementsList := range requirementsLists {
+		selector := labels.NewSelector()
+
+		for _, requirement := range requirementsList {
+			req, err := labels.NewRequirement(requirement, selection.Exists, []string{})
+			if err != nil {
+				return nil, fmt.Errorf("could not add requirement %q to selector: %w", requirement, err)
+			}
+			selector = selector.Add(*req)
 		}
-		selector = selector.Add(*req)
+
+		selectors = append(selectors, selector)
 	}
 
-	return deleteBuildObjectsForSelector(cs, selector)
+	return selectors, nil
 }
 
 func deleteBuildObjectsForSelector(cs *framework.ClientSet, selector labels.Selector) error {
@@ -254,7 +287,6 @@ func deleteBuildObjectsForSelector(cs *framework.ClientSet, selector labels.Sele
 	})
 
 	eg.Go(func() error {
-
 		pods, err := cs.CoreV1Interface.Pods(ctrlcommon.MCONamespace).List(context.TODO(), listOpts)
 		if err != nil {
 			return err

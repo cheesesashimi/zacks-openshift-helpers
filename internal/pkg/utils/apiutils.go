@@ -10,6 +10,7 @@ import (
 	"github.com/openshift/machine-config-operator/test/framework"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 )
 
 type notFoundErr struct {
@@ -35,6 +36,15 @@ func (n *notFoundErr) Unwrap() error {
 func IsNotFoundErr(err error) bool {
 	notFoundErr := &notFoundErr{}
 	return errors.As(err, &notFoundErr)
+}
+
+func IsMachineConfigPoolLayered(ctx context.Context, cs *framework.ClientSet, mcp *mcfgv1.MachineConfigPool) (bool, error) {
+	mosc, err := GetMachineOSConfigForPool(ctx, cs, mcp)
+	if err != nil && !IsNotFoundErr(err) {
+		return false, err
+	}
+
+	return mosc != nil && !IsNotFoundErr(err), nil
 }
 
 func GetMachineOSBuildForPoolName(ctx context.Context, cs *framework.ClientSet, poolName string) (*mcfgv1alpha1.MachineOSBuild, error) {
@@ -85,4 +95,30 @@ func GetMachineOSConfigForPool(ctx context.Context, cs *framework.ClientSet, mcp
 	}
 
 	return nil, newNotFoundErr("machineosconfigs", mcp.Name)
+}
+
+func PauseMachineConfigPool(ctx context.Context, cs *framework.ClientSet, poolName string) error {
+	return setMachineConfigPoolPauseState(ctx, cs, poolName, true)
+}
+
+func UnpauseMachineConfigPool(ctx context.Context, cs *framework.ClientSet, poolName string) error {
+	return setMachineConfigPoolPauseState(ctx, cs, poolName, false)
+}
+
+func setMachineConfigPoolPauseState(ctx context.Context, cs *framework.ClientSet, poolName string, pauseStatus bool) error {
+	mcp, err := cs.MachineConfigPools().Get(ctx, poolName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get MachineConfigPool %s for pausing: %w", poolName, err)
+	}
+
+	if pauseStatus {
+		klog.Infof("Pausing MachineConfigPool %s", poolName)
+	} else {
+		klog.Infof("Unpausing MachineConfigPool %s", poolName)
+	}
+
+	mcp.Spec.Paused = pauseStatus
+
+	_, err = cs.MachineConfigPools().Update(ctx, mcp, metav1.UpdateOptions{})
+	return err
 }

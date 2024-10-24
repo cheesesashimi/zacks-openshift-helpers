@@ -11,6 +11,7 @@ import (
 type opts struct {
 	pushSecretName              string
 	pullSecretName              string
+	finalImagePullSecretName    string
 	pushSecretPath              string
 	pullSecretPath              string
 	finalImagePullspec          string
@@ -29,6 +30,7 @@ func (o *opts) deepCopy() opts {
 		pushSecretPath:              o.pushSecretPath,
 		pullSecretPath:              o.pullSecretPath,
 		finalImagePullspec:          o.finalImagePullspec,
+		finalImagePullSecretName:    o.finalImagePullSecretName,
 		containerfilePath:           o.containerfilePath,
 		poolName:                    o.poolName,
 		injectYumRepos:              o.injectYumRepos,
@@ -61,6 +63,10 @@ func (o *opts) maybeGetContainerfileContent() (string, error) {
 }
 
 func (o *opts) shouldCloneGlobalPullSecret() bool {
+	if o.pullSecretName == globalPullSecretCloneName && o.pullSecretPath == "" {
+		return true
+	}
+
 	return isNoneSet(o.pullSecretName, o.pullSecretPath)
 }
 
@@ -80,15 +86,29 @@ func (o *opts) toMachineOSConfig() (*mcfgv1alpha1.MachineOSConfig, error) {
 		return nil, err
 	}
 
+	finalPullSecretName, err := o.getFinalPullSecretName()
+	if err != nil {
+		return nil, err
+	}
+
 	moscOpts := moscOpts{
 		poolName:              o.poolName,
 		containerfileContents: containerfileContents,
 		pullSecretName:        pullSecretName,
 		pushSecretName:        pushSecretName,
 		finalImagePullspec:    o.finalImagePullspec,
+		finalPullSecretName:   finalPullSecretName,
 	}
 
 	return newMachineOSConfig(moscOpts), nil
+}
+
+func (o *opts) getFinalPullSecretName() (string, error) {
+	if o.finalImagePullSecretName == "" {
+		return "", fmt.Errorf("no final image pull secret name given")
+	}
+
+	return o.finalImagePullSecretName, nil
 }
 
 func (o *opts) getPullSecretName() (string, error) {
@@ -100,7 +120,12 @@ func (o *opts) getPullSecretName() (string, error) {
 		return o.pullSecretName, nil
 	}
 
-	return getSecretNameFromFile(o.pullSecretPath)
+	name, err := getSecretNameFromFile(o.pullSecretPath)
+	if err != nil {
+		return "", fmt.Errorf("could not get pull secret name from file: %w", err)
+	}
+
+	return name, nil
 }
 
 func (o *opts) getPushSecretName() (string, error) {
@@ -108,7 +133,12 @@ func (o *opts) getPushSecretName() (string, error) {
 		return o.pushSecretName, nil
 	}
 
-	return getSecretNameFromFile(o.pushSecretPath)
+	name, err := getSecretNameFromFile(o.pushSecretPath)
+	if err != nil {
+		return "", fmt.Errorf("could not get push secret name from file: %w", err)
+	}
+
+	return name, nil
 }
 
 func (o *opts) getSecretNameParams() []string {

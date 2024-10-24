@@ -25,38 +25,17 @@ func runCiSetupCmd(setupOpts opts) error {
 		return fmt.Errorf("flags --inject-yum-repos and --copy-etc-pki-entitlement cannot be combined")
 	}
 
+	if err := utils.CheckForBinaries([]string{"oc"}); err != nil {
+		return err
+	}
+
 	cs := framework.NewClientSet("")
 
 	if err := checkForRequiredFeatureGates(cs, setupOpts); err != nil {
 		return err
 	}
 
-	pushSecretName, err := getBuilderPushSecretName(cs)
-	if err != nil {
-		return err
-	}
-
-	setupOpts.pushSecretName = pushSecretName
-
 	if err := setupForCI(cs, setupOpts); err != nil {
-		return err
-	}
-
-	if err := waitForBuildsToComplete(cs); err != nil {
-		return err
-	}
-
-	klog.Infof("Builds complete!")
-
-	delay := time.Minute
-	klog.Infof("Sleeping for %s to allow MachineConfigPools to begin rollout process", delay)
-	time.Sleep(delay)
-
-	waitTime := time.Minute * 30
-
-	klog.Infof("Waiting up to %s for all MachineConfigPools to complete", waitTime)
-
-	if err := rollout.WaitForAllMachineConfigPoolsToComplete(cs, waitTime); err != nil {
 		return err
 	}
 
@@ -66,76 +45,108 @@ func runCiSetupCmd(setupOpts opts) error {
 }
 
 func setupForCI(cs *framework.ClientSet, setupOpts opts) error {
+	start := time.Now()
+	klog.Infof("Beginning setup of on-cluster layering (OCL) for CI testing")
+
 	eg := errgroup.Group{}
 
 	eg.Go(func() error {
 		return createSecrets(cs, setupOpts)
 	})
 
-	eg.Go(func() error {
-		return setupMoscForCI(cs, setupOpts.deepCopy(), workerPoolName)
-	})
+	pools := []string{
+		workerPoolName,
+		controlPlanePoolName,
+	}
 
-	eg.Go(func() error {
-		return setupMoscForCI(cs, setupOpts.deepCopy(), controlPlanePoolName)
-	})
+	for _, pool := range pools {
+		pool := pool
+		eg.Go(func() error {
+			return setupMoscForCI(cs, setupOpts.deepCopy(), pool)
+		})
+	}
 
 	if err := eg.Wait(); err != nil {
 		return fmt.Errorf("could not setup MachineOSConfig for CI test: %w", err)
 	}
 
-	return nil
-}
+	klog.Infof("All builds completed after %s", time.Since(start))
 
-func waitForBuildsToComplete(cs *framework.ClientSet) error {
-	eg := errgroup.Group{}
-
-	waitTime := time.Minute * 15
-
-	klog.Infof("Waiting up to %s for builds to complete", waitTime)
-
-	ctx, cancel := context.WithTimeout(context.Background(), waitTime)
-	defer cancel()
-
-	eg.Go(func() error {
-		return waitForBuildToComplete(ctx, cs, workerPoolName)
-	})
-
-	eg.Go(func() error {
-		return waitForBuildToComplete(ctx, cs, controlPlanePoolName)
-	})
-
-	if err := eg.Wait(); err != nil {
-		return err
+	for _, pool := range pools {
+		if err := utils.UnpauseMachineConfigPool(context.TODO(), cs, pool); err != nil {
+			return fmt.Errorf("could not unpause MachineConfigPool %s: %w", pool, err)
+		}
 	}
+
+	if err := waitForPoolsToComplete(cs, pools); err != nil {
+		return fmt.Errorf("pools did not complete: %w", err)
+	}
+
+	klog.Infof("Completed on-cluster layering (OCL) setup for CI testing after %s", time.Since(start))
 
 	return nil
 }
 
 func setupMoscForCI(cs *framework.ClientSet, opts opts, poolName string) error {
+	waitTime := time.Minute * 20
+	ctx, cancel := context.WithTimeout(context.Background(), waitTime)
+	defer cancel()
+
 	opts.poolName = poolName
 
 	if poolName != controlPlanePoolName && poolName != workerPoolName {
 		if _, err := createPool(cs, poolName); err != nil {
-			return err
+			return fmt.Errorf("could not create MachineConfigPool %s: %w", poolName, err)
 		}
 	}
 
 	pullspec, err := createImagestreamAndGetPullspec(cs, poolName)
 	if err != nil && !apierrs.IsAlreadyExists(err) {
-		return err
+		return fmt.Errorf("could not create imagestream or get pullspec: %w", err)
 	}
 
+	pushSecretName, err := createLongLivedImagePushSecretForPool(context.TODO(), cs, poolName)
+	if err != nil {
+		return fmt.Errorf("could not create long-lived secret: %w", err)
+	}
+
+	opts.finalImagePullSecretName = pushSecretName
+	opts.pushSecretName = pushSecretName
 	opts.finalImagePullspec = pullspec
 
 	mosc, err := opts.toMachineOSConfig()
 	if err != nil {
-		return err
+		return fmt.Errorf("could not generate MachineOSConfig: %w", err)
 	}
 
 	if err := createMachineOSConfig(cs, mosc); err != nil {
+		return fmt.Errorf("could not insert new MachineOSConfig %s: %w", mosc.Name, err)
+	}
+
+	// Only pause pools that are not the control plane.
+	if poolName != controlPlanePoolName {
+		if err := utils.PauseMachineConfigPool(ctx, cs, poolName); err != nil {
+			return fmt.Errorf("could not pause MachineConfigPool %s: %w", poolName, err)
+		}
+	}
+
+	if err := waitForBuildToComplete(ctx, cs, poolName); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func waitForPoolsToComplete(cs *framework.ClientSet, pools []string) error {
+	eg := errgroup.Group{}
+
+	for _, pool := range pools {
+		pool := pool
+
+		eg.Go(func() error {
+			return rollout.WaitForMachineConfigPoolUpdateToComplete(cs, time.Minute*30, pool)
+		})
+	}
+
+	return eg.Wait()
 }

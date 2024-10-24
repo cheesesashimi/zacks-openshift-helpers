@@ -21,6 +21,7 @@ type moscOpts struct {
 	containerfileContents string
 	pullSecretName        string
 	pushSecretName        string
+	finalPullSecretName   string
 	finalImagePullspec    string
 }
 
@@ -38,7 +39,7 @@ func newMachineOSConfig(opts moscOpts) *mcfgv1alpha1.MachineOSConfig {
 			},
 			BuildInputs: mcfgv1alpha1.BuildInputs{
 				BaseImagePullSecret: mcfgv1alpha1.ImageSecretObjectReference{
-					Name: globalPullSecretCloneName,
+					Name: opts.pullSecretName,
 				},
 				RenderedImagePushSecret: mcfgv1alpha1.ImageSecretObjectReference{
 					Name: opts.pushSecretName,
@@ -56,7 +57,7 @@ func newMachineOSConfig(opts moscOpts) *mcfgv1alpha1.MachineOSConfig {
 			},
 			BuildOutputs: mcfgv1alpha1.BuildOutputs{
 				CurrentImagePullSecret: mcfgv1alpha1.ImageSecretObjectReference{
-					Name: opts.pushSecretName,
+					Name: opts.finalPullSecretName,
 				},
 			},
 		},
@@ -153,25 +154,13 @@ func deleteMachineOSBuilds(cs *framework.ClientSet) error {
 	return err
 }
 
-func isBuildDone(mosb *mcfgv1alpha1.MachineOSBuild, err error) (bool, error) {
-	if err != nil {
-		return false, err
-	}
-
-	state := ctrlcommon.NewMachineOSBuildState(mosb)
-
-	if state.IsBuildFailure() {
-		return false, fmt.Errorf("build %q failed", mosb.Name)
-	}
-
-	return state.IsBuildSuccess(), nil
-}
-
 func waitForBuildToComplete(ctx context.Context, cs *framework.ClientSet, poolName string) error {
 	isExists := false
 	isPending := false
 	isBuilding := false
 	isSuccess := false
+
+	start := time.Now()
 
 	return waitForMachineOSBuildToReachState(ctx, cs, poolName, func(mosb *mcfgv1alpha1.MachineOSBuild, err error) (bool, error) {
 		// There is a lag between when the MachineOSConfig is created and the
@@ -188,28 +177,29 @@ func waitForBuildToComplete(ctx context.Context, cs *framework.ClientSet, poolNa
 		// If the MachineOSBuild exists, we can interrogate its state.
 		if !isExists && mosb != nil && err == nil {
 			isExists = true
-			klog.Infof("Build %s exists", mosb.Name)
+			klog.Infof("Build %s exists after %s", mosb.Name, time.Since(start))
 		}
 
 		state := ctrlcommon.NewMachineOSBuildState(mosb)
 
 		if !isPending && state.IsBuildPending() {
 			isPending = true
-			klog.Infof("Build %s is now pending", mosb.Name)
+			klog.Infof("Build %s is now pending after %s", mosb.Name, time.Since(start))
 		}
 
 		if !isBuilding && state.IsBuilding() {
 			isBuilding = true
-			klog.Infof("Build %s is now running", mosb.Name)
+			klog.Infof("Build %s is now running after %s", mosb.Name, time.Since(start))
 		}
 
 		if !isSuccess && state.IsBuildSuccess() {
 			isSuccess = true
-			klog.Infof("Build %s is complete!", mosb.Name)
+			klog.Infof("Build %s is complete after %s", mosb.Name, time.Since(start))
+			return true, nil
 		}
 
 		if state.IsBuildFailure() {
-			return false, fmt.Errorf("build %s failed", mosb.Name)
+			return false, fmt.Errorf("build %s failed after %s", mosb.Name, time.Since(start))
 		}
 
 		return false, nil
