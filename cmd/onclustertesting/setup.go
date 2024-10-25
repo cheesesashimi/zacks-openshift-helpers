@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
-	"github.com/davecgh/go-spew/spew"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/spf13/cobra"
@@ -173,10 +172,6 @@ func mobSetup(cs *framework.ClientSet, setupOpts opts) error {
 	if err != nil {
 		return err
 	}
-
-	spew.Dump(setupOpts)
-
-	spew.Dump(mosc)
 
 	if err := createMachineOSConfig(cs, mosc); err != nil {
 		return err
