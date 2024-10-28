@@ -190,4 +190,5 @@ dockers:
   image_templates:
   - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-arm64
 snapshot:
-  name_template: '{{ incpatch .Version }}-next'
+  version_template: '{{ incpatch .Version }}-next'
+version: 2
