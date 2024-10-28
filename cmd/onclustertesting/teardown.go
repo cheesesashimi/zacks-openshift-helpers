@@ -89,13 +89,5 @@ func mobTeardown(cs *framework.ClientSet, targetPool string) error {
 		return err
 	}
 
-	if err := cleanupImagestreams(cs); err != nil {
-		return err
-	}
-
-	if err := cleanupSecrets(cs); err != nil {
-		return err
-	}
-
 	return nil
 }

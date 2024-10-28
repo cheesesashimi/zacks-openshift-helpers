@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
+	buildconstants "github.com/openshift/machine-config-operator/pkg/controller/build/constants"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/pkg/daemon/constants"
 	corev1 "k8s.io/api/core/v1"
@@ -217,9 +218,8 @@ func getSelectorsForDeletion() ([]labels.Selector, error) {
 
 	requirementsLists := [][]string{
 		{
-			ctrlcommon.OSImageBuildPodLabel,
-			"machineconfiguration.openshift.io/targetMachineConfigPool",
-			"machineconfiguration.openshift.io/desiredConfig",
+			buildconstants.OnClusterLayeringLabelKey,
+			buildconstants.EphemeralBuildObjectLabelKey,
 		},
 		{
 			// TODO: Use constant for this.
@@ -248,75 +248,195 @@ func getSelectorsForDeletion() ([]labels.Selector, error) {
 }
 
 func deleteBuildObjectsForSelector(cs *framework.ClientSet, selector labels.Selector) error {
-	listOpts := metav1.ListOptions{
-		LabelSelector: selector.String(),
-	}
-
 	eg := errgroup.Group{}
 
+	klog.Infof("Deleting build objects for selector %q:", selector.String())
+
 	eg.Go(func() error {
-		configMaps, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).List(context.TODO(), listOpts)
-
-		if err != nil {
-			return err
-		}
-
-		egConfigMap := errgroup.Group{}
-
-		for _, configMap := range configMaps.Items {
-			configMap := configMap
-			egConfigMap.Go(func() error {
-				if err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).Delete(context.TODO(), configMap.Name, metav1.DeleteOptions{}); err != nil {
-					return err
-				}
-
-				klog.Infof("Deleted ConfigMap %s", configMap.Name)
-				return nil
-			})
-		}
-
-		if err := egConfigMap.Wait(); err != nil {
-			return err
-		}
-
-		if len(configMaps.Items) > 0 {
-			klog.Infof("Cleaned up all ConfigMaps for selector %s", selector.String())
-		}
-
-		return nil
+		return cleanupConfigMaps(cs, selector)
 	})
 
 	eg.Go(func() error {
-		pods, err := cs.CoreV1Interface.Pods(ctrlcommon.MCONamespace).List(context.TODO(), listOpts)
-		if err != nil {
-			return err
-		}
+		return cleanupPods(cs, selector)
+	})
 
-		egPod := errgroup.Group{}
+	eg.Go(func() error {
+		return cleanupSecrets(cs, selector)
+	})
 
-		for _, pod := range pods.Items {
-			egPod.Go(func() error {
-				if err := cs.CoreV1Interface.Pods(ctrlcommon.MCONamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
-					return err
-				}
-				klog.Infof("Deleted Pod %s", pod.Name)
+	eg.Go(func() error {
+		return cleanupImagestreams(cs, selector)
+	})
 
-				return nil
-			})
-		}
-
-		if err := egPod.Wait(); err != nil {
-			return err
-		}
-
-		if len(pods.Items) > 0 {
-			klog.Infof("Cleaned up all Pods for selector %s", selector.String())
-		}
-
-		return nil
+	eg.Go(func() error {
+		return cleanupNamespaces(cs, selector)
 	})
 
 	return eg.Wait()
+}
+
+func cleanupPods(cs *framework.ClientSet, selector labels.Selector) error {
+	eg := errgroup.Group{}
+
+	pods, err := cs.CoreV1Interface.Pods(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	for _, pod := range pods.Items {
+		pod := pod
+		eg.Go(func() error {
+			return deleteObjectAndIgnoreIfNotFound(&pod, cs.CoreV1Interface.Pods(ctrlcommon.MCONamespace))
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	if len(pods.Items) > 0 {
+		klog.Infof("Cleaned up all Pods for selector %s", selector.String())
+	}
+
+	return nil
+}
+
+func cleanupConfigMaps(cs *framework.ClientSet, selector labels.Selector) error {
+	eg := errgroup.Group{}
+
+	configMaps, err := cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	for _, configMap := range configMaps.Items {
+		configMap := configMap
+		eg.Go(func() error {
+			return deleteObjectAndIgnoreIfNotFound(&configMap, cs.CoreV1Interface.ConfigMaps(ctrlcommon.MCONamespace))
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	if len(configMaps.Items) > 0 {
+		klog.Infof("Cleaned up all ConfigMaps for selector %s", selector.String())
+	}
+
+	return nil
+}
+
+func cleanupSecrets(cs *framework.ClientSet, selector labels.Selector) error {
+	eg := errgroup.Group{}
+
+	secrets, err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	for _, secret := range secrets.Items {
+		secret := secret
+		eg.Go(func() error {
+			return deleteObjectAndIgnoreIfNotFound(&secret, cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace))
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	if len(secrets.Items) > 0 {
+		klog.Infof("Cleaned up all Secrets for selector %s", selector.String())
+	}
+
+	return nil
+}
+
+func cleanupImagestreams(cs *framework.ClientSet, selector labels.Selector) error {
+	eg := errgroup.Group{}
+
+	isList, err := cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	for _, is := range isList.Items {
+		is := is
+		eg.Go(func() error {
+			return deleteObjectAndIgnoreIfNotFound(&is, cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace))
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	if len(isList.Items) > 0 {
+		klog.Infof("Cleaned up all Imagestreams for selector %s", selector.String())
+	}
+
+	return nil
+}
+
+func cleanupNamespaces(cs *framework.ClientSet, selector labels.Selector) error {
+	eg := errgroup.Group{}
+
+	nsList, err := cs.CoreV1Interface.Namespaces().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: selector.String(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	for _, ns := range nsList.Items {
+		ns := ns
+		eg.Go(func() error {
+			return deleteObjectAndIgnoreIfNotFound(&ns, cs.CoreV1Interface.Namespaces())
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	if len(nsList.Items) > 0 {
+		klog.Infof("Cleaned up all Namespaces for selector %s", selector.String())
+	}
+
+	return nil
+}
+
+type deleter interface {
+	Delete(context.Context, string, metav1.DeleteOptions) error
+}
+
+func deleteObjectAndIgnoreIfNotFound(obj metav1.Object, deleter deleter) error {
+	err := deleter.Delete(context.TODO(), obj.GetName(), metav1.DeleteOptions{})
+	if err == nil {
+		klog.Infof("Deleted %T %s", obj, obj.GetName())
+		return nil
+	}
+
+	if apierrs.IsNotFound(err) {
+		klog.Infof("%T %s was not found, skipping deletion", obj, obj.GetName())
+		return nil
+	}
+
+	return fmt.Errorf("could not delete %T %s: %w", obj, obj.GetName(), err)
 }
 
 func errIfNotSet(in, name string) error {

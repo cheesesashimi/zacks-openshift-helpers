@@ -74,32 +74,3 @@ func createImagestream(cs *framework.ClientSet, name string) error {
 
 	return err
 }
-
-func cleanupImagestreams(cs *framework.ClientSet) error {
-	isList, err := cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).List(context.TODO(), getListOptsForOurLabel())
-	if err != nil {
-		return err
-	}
-
-	for _, is := range isList.Items {
-		if err := deleteImagestream(cs, is.Name); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func deleteImagestream(cs *framework.ClientSet, name string) error {
-	err := cs.ImageV1Interface.ImageStreams(ctrlcommon.MCONamespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
-	if err == nil {
-		klog.Infof("Imagestream %q deleted", name)
-	}
-
-	if err != nil && apierrs.IsNotFound(err) {
-		klog.Infof("Imagestream %q not found", name)
-		return nil
-	}
-
-	return err
-}

@@ -115,33 +115,6 @@ func deleteSecret(cs *framework.ClientSet, name string) error {
 	return nil
 }
 
-func cleanupSecrets(cs *framework.ClientSet) error {
-	secrets, err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), getListOptsForOurLabel())
-
-	if err != nil {
-		return err
-	}
-
-	for _, secret := range secrets.Items {
-		if err := deleteSecret(cs, secret.Name); err != nil {
-			return err
-		}
-	}
-
-	secrets, err = cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	for _, secret := range secrets.Items {
-		if strings.HasSuffix(secret.Name, "-canonical") {
-			return deleteSecret(cs, secret.Name)
-		}
-	}
-
-	return nil
-}
-
 func getBuilderPushSecretName(cs *framework.ClientSet) (string, error) {
 	secrets, err := cs.CoreV1Interface.Secrets(ctrlcommon.MCONamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
