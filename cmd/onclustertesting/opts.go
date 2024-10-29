@@ -16,6 +16,7 @@ type opts struct {
 	pullSecretPath              string
 	finalImagePullspec          string
 	containerfilePath           string
+	containerfileContents       string
 	poolName                    string
 	injectYumRepos              bool
 	waitForBuildInfo            bool
@@ -32,6 +33,7 @@ func (o *opts) deepCopy() opts {
 		finalImagePullspec:          o.finalImagePullspec,
 		finalImagePullSecretName:    o.finalImagePullSecretName,
 		containerfilePath:           o.containerfilePath,
+		containerfileContents:       o.containerfileContents,
 		poolName:                    o.poolName,
 		injectYumRepos:              o.injectYumRepos,
 		waitForBuildInfo:            o.waitForBuildInfo,
@@ -41,6 +43,10 @@ func (o *opts) deepCopy() opts {
 }
 
 func (o *opts) getContainerfileContent() (string, error) {
+	if o.containerfileContents != "" {
+		return o.containerfileContents, nil
+	}
+
 	if o.containerfilePath == "" {
 		return "", fmt.Errorf("no custom Containerfile path provided")
 	}
@@ -55,6 +61,10 @@ func (o *opts) getContainerfileContent() (string, error) {
 }
 
 func (o *opts) maybeGetContainerfileContent() (string, error) {
+	if o.containerfileContents != "" {
+		return o.containerfileContents, nil
+	}
+
 	if o.containerfilePath == "" {
 		return "", nil
 	}

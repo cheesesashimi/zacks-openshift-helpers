@@ -48,6 +48,18 @@ func setupForCI(cs *framework.ClientSet, setupOpts opts) error {
 	start := time.Now()
 	klog.Infof("Beginning setup of on-cluster layering (OCL) for CI testing")
 
+	// If the containerfile is provided using the <() shell redirect, it will
+	// only be read and applied to one MachineOSConfig. Instead, we should read
+	// it once and apply it to both MachineOSConfigs.
+	if setupOpts.containerfilePath != "" {
+		contents, err := setupOpts.getContainerfileContent()
+		if err != nil {
+			return fmt.Errorf("could not get containerfile content from %s: %w", setupOpts.containerfilePath, err)
+		}
+
+		setupOpts.containerfileContents = contents
+	}
+
 	eg := errgroup.Group{}
 
 	eg.Go(func() error {
