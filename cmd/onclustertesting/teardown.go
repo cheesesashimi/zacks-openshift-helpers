@@ -89,5 +89,9 @@ func mobTeardown(cs *framework.ClientSet, targetPool string) error {
 		return err
 	}
 
+	if err := unpauseAllPoolsWePaused(cs); err != nil {
+		return err
+	}
+
 	return nil
 }

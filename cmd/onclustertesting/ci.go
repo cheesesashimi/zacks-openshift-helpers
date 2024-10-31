@@ -85,7 +85,7 @@ func setupForCI(cs *framework.ClientSet, setupOpts opts) error {
 	klog.Infof("All builds completed after %s", time.Since(start))
 
 	for _, pool := range pools {
-		if err := utils.UnpauseMachineConfigPool(context.TODO(), cs, pool); err != nil {
+		if err := utils.UnpauseMachineConfigPoolOnlyIfWePausedIt(context.TODO(), cs, pool); err != nil {
 			return fmt.Errorf("could not unpause MachineConfigPool %s: %w", pool, err)
 		}
 	}

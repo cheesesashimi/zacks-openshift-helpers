@@ -13,6 +13,8 @@ import (
 	"k8s.io/klog"
 )
 
+const mcpPausedByHelper string = "machineconfiguration.openshift.io/paused-by-zacks-openshift-helpers"
+
 type notFoundErr struct {
 	poolName string
 	err      error
@@ -98,27 +100,51 @@ func GetMachineOSConfigForPool(ctx context.Context, cs *framework.ClientSet, mcp
 }
 
 func PauseMachineConfigPool(ctx context.Context, cs *framework.ClientSet, poolName string) error {
-	return setMachineConfigPoolPauseState(ctx, cs, poolName, true)
-}
-
-func UnpauseMachineConfigPool(ctx context.Context, cs *framework.ClientSet, poolName string) error {
-	return setMachineConfigPoolPauseState(ctx, cs, poolName, false)
-}
-
-func setMachineConfigPoolPauseState(ctx context.Context, cs *framework.ClientSet, poolName string, pauseStatus bool) error {
 	mcp, err := cs.MachineConfigPools().Get(ctx, poolName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("could not get MachineConfigPool %s for pausing: %w", poolName, err)
 	}
 
+	return setMachineConfigPoolPauseState(ctx, cs, mcp, true)
+}
+
+func UnpauseMachineConfigPool(ctx context.Context, cs *framework.ClientSet, poolName string) error {
+	mcp, err := cs.MachineConfigPools().Get(ctx, poolName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get MachineConfigPool %s for unpausing: %w", poolName, err)
+	}
+
+	return setMachineConfigPoolPauseState(ctx, cs, mcp, false)
+}
+
+func UnpauseMachineConfigPoolOnlyIfWePausedIt(ctx context.Context, cs *framework.ClientSet, poolName string) error {
+	mcp, err := cs.MachineConfigPools().Get(ctx, poolName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("could not get MachineConfigPool %s for unpausing: %w", poolName, err)
+	}
+
+	if !metav1.HasAnnotation(mcp.ObjectMeta, mcpPausedByHelper) {
+		klog.Infof("MachineConfigPool %q missing annotation %q, will not unpause", poolName, mcpPausedByHelper)
+		return nil
+	}
+
+	return setMachineConfigPoolPauseState(ctx, cs, mcp, false)
+}
+
+func setMachineConfigPoolPauseState(ctx context.Context, cs *framework.ClientSet, mcp *mcfgv1.MachineConfigPool, pauseStatus bool) error {
 	if pauseStatus {
-		klog.Infof("Pausing MachineConfigPool %s", poolName)
+		klog.Infof("Pausing MachineConfigPool %s", mcp.Name)
+		metav1.SetMetaDataAnnotation(&mcp.ObjectMeta, mcpPausedByHelper, "")
 	} else {
-		klog.Infof("Unpausing MachineConfigPool %s", poolName)
+		klog.Infof("Unpausing MachineConfigPool %s", mcp.Name)
+		if metav1.HasAnnotation(mcp.ObjectMeta, mcpPausedByHelper) {
+			delete(mcp.ObjectMeta.GetAnnotations(), mcpPausedByHelper)
+		} else {
+			klog.Warningf("MachineConfigPool %q missing annotation %q", mcp.Name, mcpPausedByHelper)
+		}
 	}
 
 	mcp.Spec.Paused = pauseStatus
-
-	_, err = cs.MachineConfigPools().Update(ctx, mcp, metav1.UpdateOptions{})
+	_, err := cs.MachineConfigPools().Update(ctx, mcp, metav1.UpdateOptions{})
 	return err
 }

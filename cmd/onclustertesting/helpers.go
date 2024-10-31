@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/onclustertesting/internal/legacycmds"
+	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"github.com/openshift/machine-config-operator/test/framework"
 	"github.com/openshift/machine-config-operator/test/helpers"
 	"golang.org/x/sync/errgroup"
@@ -116,6 +117,21 @@ func deleteAllPoolsWithOurLabel(cs *framework.ClientSet) error {
 	}
 
 	return eg.Wait()
+}
+
+func unpauseAllPoolsWePaused(cs *framework.ClientSet) error {
+	mcpList, err := cs.MachineConfigPools().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("could not list MachineConfigPools for unpausing: %w", err)
+	}
+
+	for _, mcp := range mcpList.Items {
+		if err := utils.UnpauseMachineConfigPoolOnlyIfWePausedIt(context.TODO(), cs, mcp.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func resetAllNodeAnnotations(cs *framework.ClientSet) error {
