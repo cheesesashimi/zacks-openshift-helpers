@@ -2,9 +2,11 @@ package rollout
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	errhelpers "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	mcfgv1alpha1 "github.com/openshift/api/machineconfiguration/v1alpha1"
@@ -21,6 +23,7 @@ import (
 )
 
 var pollInterval = time.Second
+var retryableErrThreshold = time.Minute
 
 func WaitForMachineConfigPoolsToComplete(cs *framework.ClientSet, poolNames []string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -202,13 +205,34 @@ func waitForNodesToComplete(ctx context.Context, cs *framework.ClientSet, poolNa
 		klog.Infof("No MachineOSConfig found, will only consider MachineConfigs")
 	}
 
+	retryer := errhelpers.NewTimeRetryer(retryableErrThreshold)
+
 	return wait.PollUntilContextCancel(ctx, pollInterval, true, func(ctx context.Context) (bool, error) {
 		nodes, err := cs.CoreV1Interface.Nodes().List(ctx, metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("node-role.kubernetes.io/%s", poolName),
 		})
 
 		if err != nil {
-			return false, err
+			if !isRetryableErr(err) {
+				return false, err
+			}
+
+			if retryer.Current() == nil {
+				klog.Infof("An error was encountered, will retry for %s or until the error is no longer encountered", retryableErrThreshold)
+				klog.Warning(err)
+			}
+
+			if retryer.IsReached() {
+				klog.Infof("Threshold %s reached with no change in error", retryableErrThreshold)
+				return false, err
+			}
+
+			return false, nil
+		}
+
+		if retryer.Current() != nil {
+			klog.Infof("The transient error is no longer occurring")
+			retryer.Clear()
 		}
 
 		for _, node := range nodes.Items {
@@ -244,6 +268,18 @@ func waitForNodesToComplete(ctx context.Context, cs *framework.ClientSet, poolNa
 
 		return isDone, nil
 	})
+}
+
+func isRetryableErr(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	return true
 }
 
 func getMachineConfigPoolNames(ctx context.Context, cs *framework.ClientSet) ([]string, error) {
