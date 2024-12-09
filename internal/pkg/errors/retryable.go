@@ -6,6 +6,7 @@ type Retryer interface {
 	Clear()
 	IsReached() bool
 	Current() interface{}
+	IsEmpty() bool
 }
 
 type timeRetryer struct {
@@ -17,6 +18,10 @@ func NewTimeRetryer(threshold time.Duration) Retryer {
 	return &timeRetryer{
 		threshold: threshold,
 	}
+}
+
+func (t *timeRetryer) IsEmpty() bool {
+	return t.start == nil
 }
 
 func (t *timeRetryer) Current() interface{} {
@@ -45,6 +50,10 @@ func NewMaxAttemptRetryer(threshold int) Retryer {
 	return &maxAttemptRetryer{
 		threshold: threshold,
 	}
+}
+
+func (m *maxAttemptRetryer) IsEmpty() bool {
+	return m.start == nil
 }
 
 func (m *maxAttemptRetryer) Current() interface{} {

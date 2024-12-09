@@ -230,7 +230,7 @@ func waitForNodesToComplete(ctx context.Context, cs *framework.ClientSet, poolNa
 			return false, nil
 		}
 
-		if retryer.Current() != nil {
+		if !retryer.IsEmpty() {
 			klog.Infof("The transient error is no longer occurring")
 			retryer.Clear()
 		}

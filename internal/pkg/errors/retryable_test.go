@@ -30,8 +30,10 @@ func TestMaxCountRetryable(t *testing.T) {
 	for i := 0; i <= 10; i++ {
 		innerTestLoop()
 		assert.NotNil(t, mar.Current())
+		assert.False(t, mar.IsEmpty())
 		mar.Clear()
 		assert.Nil(t, mar.Current())
+		assert.True(t, mar.IsEmpty())
 	}
 }
 
@@ -44,6 +46,7 @@ func TestTimeRetryable(t *testing.T) {
 		for i := 0; i <= 10; i++ {
 			assert.False(t, tr.IsReached())
 			assert.NotNil(t, tr.Current())
+			assert.False(t, tr.IsEmpty())
 		}
 	}
 
@@ -52,7 +55,9 @@ func TestTimeRetryable(t *testing.T) {
 		time.Sleep(time.Millisecond)
 		assert.True(t, tr.IsReached())
 		assert.NotNil(t, tr.Current())
+		assert.False(t, tr.IsEmpty())
 		tr.Clear()
 		assert.Nil(t, tr.Current())
+		assert.True(t, tr.IsEmpty())
 	}
 }
