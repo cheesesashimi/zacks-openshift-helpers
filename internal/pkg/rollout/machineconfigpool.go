@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	errhelpers "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
@@ -100,6 +101,20 @@ func WaitForAllMachineConfigPoolsToComplete(cs *framework.ClientSet, timeout tim
 	return err
 }
 
+// Waits for the MachineConfigPool to complete. This does not consider
+// individual node state and does not provide progress output.
+func WaitForOnlyMachineConfigPoolToComplete(cs *framework.ClientSet, poolName string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Wait for the pool to begin updating.
+	if err := waitForMachineConfigPoolToStart(ctx, cs, poolName); err != nil {
+		return fmt.Errorf("pool %s did not start updating: %w", poolName, err)
+	}
+
+	return waitForMachineConfigPoolToComplete(ctx, cs, poolName)
+}
+
 func WaitForMachineConfigPoolToComplete(cs *framework.ClientSet, poolName string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -124,10 +139,18 @@ func waitForMachineConfigPoolsToCompleteWithContext(ctx context.Context, cs *fra
 func waitForMachineConfigPoolToStart(ctx context.Context, cs *framework.ClientSet, poolName string) error {
 	start := time.Now()
 
+	retryer := errhelpers.NewTimeRetryer(retryableErrThreshold)
+
 	return wait.PollUntilContextCancel(ctx, pollInterval, true, func(ctx context.Context) (bool, error) {
 		mcp, err := cs.MachineConfigPools().Get(ctx, poolName, metav1.GetOptions{})
+
+		shouldContinue, err := handleQueryErr(err, retryer)
 		if err != nil {
 			return false, err
+		}
+
+		if !shouldContinue {
+			return false, nil
 		}
 
 		if apihelpers.IsMachineConfigPoolConditionTrue(mcp.Status.Conditions, mcfgv1.MachineConfigPoolUpdating) {
@@ -156,10 +179,28 @@ func waitForMachineConfigPoolAndNodesToComplete(ctx context.Context, cs *framewo
 func waitForMachineConfigPoolToComplete(ctx context.Context, cs *framework.ClientSet, poolName string) error {
 	start := time.Now()
 
+	initial, err := cs.MachineConfigPools().Get(ctx, poolName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	retryer := errhelpers.NewTimeRetryer(retryableErrThreshold)
+
 	return wait.PollUntilContextCancel(ctx, pollInterval, true, func(ctx context.Context) (bool, error) {
 		mcp, err := cs.MachineConfigPools().Get(ctx, poolName, metav1.GetOptions{})
+
+		shouldContinue, err := handleQueryErr(err, retryer)
 		if err != nil {
 			return false, err
+		}
+
+		if !shouldContinue {
+			return false, nil
+		}
+
+		if hasMachineConfigPoolStatusChanged(initial, mcp) {
+			logMCPChange(initial, mcp, start)
+			initial = mcp
 		}
 
 		if apihelpers.IsMachineConfigPoolConditionTrue(mcp.Status.Conditions, mcfgv1.MachineConfigPoolUpdated) {
@@ -169,6 +210,88 @@ func waitForMachineConfigPoolToComplete(ctx context.Context, cs *framework.Clien
 
 		return false, validatePoolIsNotDegraded(mcp)
 	})
+}
+
+// Determines if the API error is retryable and ensures we can only retry for a
+// finite amount of time. If the error keeps occurring after the given
+// threshold, it will return nil. Returns a boolean indicating whether to
+// continue from the current point and an error in the event that it is either
+// retryable or the threshold has been met.
+func handleQueryErr(err error, retryer errhelpers.Retryer) (bool, error) {
+	if err == nil {
+		if !retryer.IsEmpty() {
+			// If error is nil when it was previously not nil, clear the retryer and
+			// continue.
+			klog.Infof("The transient error is no longer occurring")
+			retryer.Clear()
+		}
+
+		// If no error was encountered, continue as usual.
+		return true, nil
+	}
+
+	// If the error is not retryable, stop here.
+	if !isRetryableErr(err) {
+		return false, err
+	}
+
+	// If the retryer is empty and we've encountered an error, log the error.
+	if retryer.IsEmpty() {
+		klog.Infof("An error has occurred, will retry for %s or until the error is no longer encountered", retryableErrThreshold)
+		klog.Warning(err)
+	}
+
+	// This checks whether the retryer has reached the limit. If the retryer is
+	// empty, it will populate itself before retrying.
+	if retryer.IsReached() {
+		// If no change after our threshold, we stop here.
+		klog.Infof("Threshold %s reached", retryableErrThreshold)
+		klog.Warning(err)
+		return false, err
+	}
+
+	// At this point, we have a retryable error and know that we can try again.
+	return false, nil
+}
+
+// Logs the detected MachineConfigPool change.
+func logMCPChange(initial, current *mcfgv1.MachineConfigPool, start time.Time) {
+	changes := []string{
+		fmt.Sprintf("MachineConfigPool %s has changed:", initial.Name),
+		fmt.Sprintf("Degraded: %d -> %d,", initial.Status.DegradedMachineCount, current.Status.DegradedMachineCount),
+		fmt.Sprintf("Machines: %d -> %d,", initial.Status.MachineCount, current.Status.MachineCount),
+		fmt.Sprintf("Ready: %d -> %d,", initial.Status.ReadyMachineCount, current.Status.ReadyMachineCount),
+		fmt.Sprintf("Unavailable: %d -> %d,", initial.Status.UnavailableMachineCount, current.Status.UnavailableMachineCount),
+		fmt.Sprintf("Updated: %d -> %d", initial.Status.UpdatedMachineCount, current.Status.UpdatedMachineCount),
+		fmt.Sprintf("after %s", time.Since(start)),
+	}
+
+	klog.Info(strings.Join(changes, " "))
+}
+
+// Determines if the MachineConfigPool status has changed by examining the various machine counts.
+func hasMachineConfigPoolStatusChanged(initial, current *mcfgv1.MachineConfigPool) bool {
+	if initial.Status.DegradedMachineCount != current.Status.DegradedMachineCount {
+		return true
+	}
+
+	if initial.Status.MachineCount != current.Status.MachineCount {
+		return true
+	}
+
+	if initial.Status.ReadyMachineCount != current.Status.ReadyMachineCount {
+		return true
+	}
+
+	if initial.Status.UnavailableMachineCount != current.Status.UnavailableMachineCount {
+		return true
+	}
+
+	if initial.Status.UpdatedMachineCount != current.Status.UpdatedMachineCount {
+		return true
+	}
+
+	return false
 }
 
 func waitForNodesToComplete(ctx context.Context, cs *framework.ClientSet, poolName string) error {
@@ -212,27 +335,13 @@ func waitForNodesToComplete(ctx context.Context, cs *framework.ClientSet, poolNa
 			LabelSelector: fmt.Sprintf("node-role.kubernetes.io/%s", poolName),
 		})
 
+		shouldContinue, err := handleQueryErr(err, retryer)
 		if err != nil {
-			if !isRetryableErr(err) {
-				return false, err
-			}
-
-			if retryer.Current() == nil {
-				klog.Infof("An error was encountered, will retry for %s or until the error is no longer encountered", retryableErrThreshold)
-				klog.Warning(err)
-			}
-
-			if retryer.IsReached() {
-				klog.Infof("Threshold %s reached with no change in error", retryableErrThreshold)
-				return false, err
-			}
-
-			return false, nil
+			return false, err
 		}
 
-		if !retryer.IsEmpty() {
-			klog.Infof("The transient error is no longer occurring")
-			retryer.Clear()
+		if !shouldContinue {
+			return false, nil
 		}
 
 		for _, node := range nodes.Items {
@@ -270,6 +379,9 @@ func waitForNodesToComplete(ctx context.Context, cs *framework.ClientSet, poolNa
 	})
 }
 
+// Determines if an error is retryable. Currently, that means whether the
+// context has been canceled or the deadline has been exceeded. In either of
+// those scenarios, we cannot retry.
 func isRetryableErr(err error) bool {
 	if errors.Is(err, context.Canceled) {
 		return false
