@@ -89,15 +89,15 @@ func getNodeNames(nodes *corev1.NodeList) []string {
 }
 
 func runCommand(outChan chan output, node *corev1.Node, opts runOpts) error {
-	cmd := exec.Command("oc", "debug", fmt.Sprintf("node/%s", node.Name), "--", "chroot", "/host", "/bin/bash", "-c", opts.command)
+	cmd := exec.Command("oc", "debug", "--to-namespace", "default", fmt.Sprintf("node/%s", node.Name), "--", "chroot", "/host", "/bin/bash", "-c", opts.command)
 
 	stdout := bytes.NewBuffer([]byte{})
 	stderr := bytes.NewBuffer([]byte{})
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	cmd.Env = utils.ToEnvVars(map[string]string{
+	cmd.Env = append(cmd.Env, utils.ToEnvVars(map[string]string{
 		"KUBECONFIG": opts.kubeconfig,
-	})
+	})...)
 
 	runErr := cmd.Run()
 
@@ -226,6 +226,10 @@ func runOnAllNodes(opts runOpts) error {
 	if err != nil {
 		return err
 	}
+
+	val, ok := os.LookupEnv("KUBECONFIG")
+	klog.Infof("KUBECONFIG env var: %q, %v", val, ok)
+	klog.Infof("Using kubeconfig: %q", kubeconfig)
 
 	opts.kubeconfig = kubeconfig
 
