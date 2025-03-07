@@ -56,12 +56,16 @@ func copyEtcPkiEntitlementSecret(cs *framework.ClientSet) error {
 	}
 
 	err := utils.CloneSecretWithLabels(cs, src, dst, labels)
+	if err == nil {
+		return nil
+	}
+
 	if apierrs.IsNotFound(err) {
 		klog.Warningf("Secret %s not found, cannot copy", src.String())
 		return nil
 	}
 
-	return fmt.Errorf("could not copy secret %s to %s: %w", src.String(), dst.String(), err)
+	return fmt.Errorf("could not copy entitlement secret %s to %s: %w", src.String(), dst.String(), err)
 }
 
 func getSecretNameFromFile(path string) (string, error) {
