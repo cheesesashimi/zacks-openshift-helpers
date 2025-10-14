@@ -1,16 +1,17 @@
-name: golangci-lint
+name: lint
 on:
   push:
     branches:
       - master
       - main
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
-  golangci:
+  lint:
     name: lint
     runs-on: ubuntu-latest
     steps:

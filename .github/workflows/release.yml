@@ -9,7 +9,20 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  lint:
+    name: Lint Code
+    uses: ./.github/workflows/lint.yml
+
+  test:
+    name: Run Unit Tests
+    uses: ./.github/workflows/test.yml
+
+  build:
+    name: Build Binaries
+    uses: ./.github/workflows/build.yml
+
+  release:
+    needs: ["build", "test", "lint"]
     runs-on: ubuntu-latest
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
