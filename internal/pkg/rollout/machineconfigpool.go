@@ -10,7 +10,6 @@ import (
 	errhelpers "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/errors"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
-	mcfgv1alpha1 "github.com/openshift/api/machineconfiguration/v1alpha1"
 	"github.com/openshift/machine-config-operator/pkg/apihelpers"
 	daemonconsts "github.com/openshift/machine-config-operator/pkg/daemon/constants"
 	"github.com/openshift/machine-config-operator/test/framework"
@@ -426,10 +425,10 @@ func isNodeImageDone(node *corev1.Node) bool {
 	return isNodeDone(node) && current == desired
 }
 
-func isNodeDoneAtMosc(mosc *mcfgv1alpha1.MachineOSConfig, node *corev1.Node) bool {
+func isNodeDoneAtMosc(mosc *mcfgv1.MachineOSConfig, node *corev1.Node) bool {
 	current := node.Annotations[daemonconsts.CurrentImageAnnotationKey]
 	desired := node.Annotations[daemonconsts.DesiredImageAnnotationKey]
-	return isNodeDone(node) && isNodeImageDone(node) && desired == mosc.Status.CurrentImagePullspec && desired != "" && current != ""
+	return isNodeDone(node) && isNodeImageDone(node) && desired == string(mosc.Status.CurrentImagePullSpec) && desired != "" && current != ""
 }
 
 func isNodeDone(node *corev1.Node) bool {
