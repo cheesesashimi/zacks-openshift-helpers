@@ -1,8 +1,10 @@
 archives:
-- format: tar.gz
-  format_overrides:
-  - format: zip
+- format_overrides:
+  - formats:
+    - zip
     goos: windows
+  formats:
+  - tar.gz
   name_template: '{{ .ProjectName }}_ {{- title .Os }}_ {{- if eq .Arch "amd64" }}x86_64
     {{- else if eq .Arch "386" }}i386 {{- else }}{{ .Arch }}{{ end }} {{- if .Arm
     }}v{{ .Arm }}{{ end }}'
@@ -51,72 +53,38 @@ changelog:
   sort: asc
 checksum:
   name_template: checksums.txt
-docker_manifests:
-- image_templates:
-  - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-amd64
-  - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-arm64
-  name_template: quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}
-- image_templates:
-  - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-amd64
-  - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-arm64
-  name_template: quay.io/zzlotnik/{{ .ProjectName }}:latest
-dockers:
-- build_flag_templates:
-  - --platform=linux/amd64
-  - --label=org.opencontainers.image.title={{ .ProjectName }}
-  - --label=org.opencontainers.image.description={{ .ProjectName }}
-  - --label=org.opencontainers.image.url=https://github.com/cheesesashimi/{{ .ProjectName
-    }}
-  - --label=org.opencontainers.image.source=https://github.com/cheesesashimi/{{ .ProjectName
-    }}
-  - --label=org.opencontainers.image.version={{ .Version }}
-  - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-  - --label=org.opencontainers.image.revision={{ .FullCommit }}
-  - '{{ if index .Env "GITHUB_ACTIONS" }}--label=com.github.actions={{else}}--label={{end}}'
-  - '{{ if index .Env "GITHUB_RUN_ID" }}--label=com.github.actions.runId={{ .Env.GITHUB_RUN_ID
-    }}{{else}}--label={{end}}'
-  - '{{ if index .Env "GITHUB_RUN_NUMBER" }}--label=com.github.actions.runNumber={{
-    .Env.GITHUB_RUN_NUMBER }}{{else}}--label={{end}}'
-  - '{{ if index .Env "GITHUB_WORKFLOW" }}--label=com.github.actions.workflow={{ .Env.GITHUB_WORKFLOW
-    }}{{else}}--label={{end}}'
-  - '{{ if index .Env "RUNNER_NAME" }}--label=com.github.actions.runnerName={{ .Env.RUNNER_NAME
-    }}{{else}}--label={{end}}'
-  dockerfile: Dockerfile.goreleaser
-  goarch: amd64
-  goos: linux
+dockers_v2:
+- dockerfile: Dockerfile.goreleaser
   ids:
   - cluster-lifecycle
   - pull-from-imagestream
-  image_templates:
-  - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-amd64
-- build_flag_templates:
-  - --platform=linux/arm64
-  - --label=org.opencontainers.image.title={{ .ProjectName }}
-  - --label=org.opencontainers.image.description={{ .ProjectName }}
-  - --label=org.opencontainers.image.url=https://github.com/cheesesashimi/{{ .ProjectName
-    }}
-  - --label=org.opencontainers.image.source=https://github.com/cheesesashimi/{{ .ProjectName
-    }}
-  - --label=org.opencontainers.image.version={{ .Version }}
-  - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
-  - --label=org.opencontainers.image.revision={{ .FullCommit }}
-  - '{{ if index .Env "GITHUB_ACTIONS" }}--label=com.github.actions={{else}}--label={{end}}'
-  - '{{ if index .Env "GITHUB_RUN_ID" }}--label=com.github.actions.runId={{ .Env.GITHUB_RUN_ID
-    }}{{else}}--label={{end}}'
-  - '{{ if index .Env "GITHUB_RUN_NUMBER" }}--label=com.github.actions.runNumber={{
-    .Env.GITHUB_RUN_NUMBER }}{{else}}--label={{end}}'
-  - '{{ if index .Env "GITHUB_WORKFLOW" }}--label=com.github.actions.workflow={{ .Env.GITHUB_WORKFLOW
-    }}{{else}}--label={{end}}'
-  - '{{ if index .Env "RUNNER_NAME" }}--label=com.github.actions.runnerName={{ .Env.RUNNER_NAME
-    }}{{else}}--label={{end}}'
-  dockerfile: Dockerfile.goreleaser
-  goarch: arm64
-  goos: linux
-  ids:
-  - cluster-lifecycle
-  - pull-from-imagestream
-  image_templates:
-  - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-arm64
+  images:
+  - quay.io/zzlotnik/{{ .ProjectName }}
+  labels:
+    org.opencontainers.image.created: '{{ .Date }}'
+    org.opencontainers.image.description: '{{ .ProjectName }}'
+    org.opencontainers.image.revision: '{{ .FullCommit }}'
+    org.opencontainers.image.source: https://github.com/cheesesashimi/{{ .ProjectName
+      }}
+    org.opencontainers.image.title: '{{ .ProjectName }}'
+    org.opencontainers.image.url: https://github.com/cheesesashimi/{{ .ProjectName
+      }}
+    org.opencontainers.image.version: '{{ .Version }}'
+    '{{ if index .Env "GITHUB_ACTIONS" }}com.github.actions{{else}}label-no-actions-env-1{{end}}': ''
+    '{{ if index .Env "GITHUB_RUN_ID" }}com.github.actions.runId{{else}}label-no-actions-env-2{{end}}': '{{
+      if index .Env "GITHUB_RUN_ID" }}{{ .Env.GITHUB_RUN_ID }}{{else}}{{end}}'
+    '{{ if index .Env "GITHUB_RUN_NUMBER" }}com.github.actions.runNumber{{else}}label-no-actions-env-3{{end}}': '{{
+      if index .Env "GITHUB_RUN_NUMBER" }}{{ .Env.GITHUB_RUN_NUMBER }}{{else}}{{end}}'
+    '{{ if index .Env "GITHUB_WORKFLOW" }}com.github.actions.workflow{{else}}label-no-actions-env-4{{end}}': '{{
+      if index .Env "GITHUB_WORKFLOW" }}{{ .Env.GITHUB_WORKFLOW }}{{else}}{{end}}'
+    '{{ if index .Env "RUNNER_NAME" }}com.github.actions.runnerName{{else}}label-no-actions-env-5{{end}}': '{{
+      if index .Env "RUNNER_NAME" }}{{ .Env.RUNNER_NAME }}{{else}}{{end}}'
+  platforms:
+  - linux/amd64
+  - linux/arm64
+  tags:
+  - '{{ .Version }}'
+  - latest
 snapshot:
   version_template: '{{ incpatch .Version }}-next'
 version: 2

@@ -7,7 +7,7 @@ toolchain go1.23.2
 require (
 	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/containers/image/v5 v5.30.0
-	github.com/coreos/ignition/v2 v2.15.0
+	github.com/distribution/reference v0.5.0
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/hexops/valast v1.4.4
@@ -24,8 +24,6 @@ require (
 	k8s.io/client-go v0.31.1
 	k8s.io/component-base v0.31.1
 	k8s.io/klog v1.0.0
-	k8s.io/klog/v2 v2.130.1
-	sigs.k8s.io/yaml v1.4.0
 )
 
 require (
@@ -35,7 +33,6 @@ require (
 	github.com/PaesslerAG/gval v1.0.0 // indirect
 	github.com/ProtonMail/go-crypto v1.0.0 // indirect
 	github.com/ajeddeloh/go-json v0.0.0-20200220154158-5ae607161559 // indirect
-	github.com/ashcrow/osrelease v0.0.0-20180626175927-9b292693c55c // indirect
 	github.com/aws/aws-sdk-go v1.45.20 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -52,11 +49,10 @@ require (
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/coreos/ign-converter v0.0.0-20230417193809-cee89ea7d8ff // indirect
 	github.com/coreos/ignition v0.35.0 // indirect
-	github.com/coreos/rpmostree-client-go v0.0.0-20230914135003-fae0786302f7 // indirect
+	github.com/coreos/ignition/v2 v2.15.0 // indirect
 	github.com/coreos/vcontext v0.0.0-20230201181013-d72178a18687 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker v26.0.1+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.1 // indirect
@@ -143,6 +139,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.31.1 // indirect
 	k8s.io/apiserver v0.31.1 // indirect
+	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-aggregator v0.31.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20241009091222-67ed5848f094 // indirect
 	k8s.io/utils v0.0.0-20240921022957-49e7df575cb6 // indirect
@@ -151,6 +148,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
 	sigs.k8s.io/kube-storage-version-migrator v0.0.6-0.20230721195810-5c8923c5ff96 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
+	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
 replace go.tmz.dev/musttag v0.7.2 => go-simpler.org/musttag v0.7.2

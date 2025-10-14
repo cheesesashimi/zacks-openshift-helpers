@@ -22,7 +22,8 @@ fi
 EOF
 
 FROM quay.io/fedora/fedora:43 AS final
+ARG TARGETPLATFORM
 COPY --from=fetcher /oc/oc /usr/local/bin/oc
 COPY --from=fetcher /oc/kubectl /usr/local/bin/kubectl
-COPY cluster-lifecycle /usr/local/bin/cluster-lifecycle
-COPY pull-from-imagestream /usr/local/bin/pull-from-imagestream
+COPY $TARGETPLATFORM/cluster-lifecycle /usr/local/bin/cluster-lifecycle
+COPY $TARGETPLATFORM/pull-from-imagestream /usr/local/bin/pull-from-imagestream

@@ -38,4 +38,4 @@ update-configs:
 .PHONY: validate-goreleaser
 validate-goreleaser-config:
 	@echo "Validating goreleaser config..."
-	@goreleaser build --snapshot --clean --single-target
+	@goreleaser release --snapshot --clean

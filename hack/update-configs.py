@@ -40,49 +40,46 @@ def create_build(name):
     }
 
 
-def create_docker_for_arch(builds, arch):
-    return {
-        "image_templates": [
-            # Using a formatstring here doesn't work because of the nested {{}}'s.'
-            "quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-"
-            + arch,
-        ],
-        "dockerfile": DOCKERFILE_NAME,
-        "goos": "linux",
-        "goarch": arch,
-        "ids": [build["id"] for build in builds],
-        "build_flag_templates": [
-            f"--platform=linux/{arch}",
-            "--label=org.opencontainers.image.title={{ .ProjectName }}",
-            "--label=org.opencontainers.image.description={{ .ProjectName }}",
-            "--label=org.opencontainers.image.url=https://github.com/cheesesashimi/{{ .ProjectName }}",
-            "--label=org.opencontainers.image.source=https://github.com/cheesesashimi/{{ .ProjectName }}",
-            "--label=org.opencontainers.image.version={{ .Version }}",
-            '--label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}',
-            "--label=org.opencontainers.image.revision={{ .FullCommit }}",
-            '{{ if index .Env "GITHUB_ACTIONS" }}--label=com.github.actions={{else}}--label={{end}}',
-            '{{ if index .Env "GITHUB_RUN_ID" }}--label=com.github.actions.runId={{ .Env.GITHUB_RUN_ID }}{{else}}--label={{end}}',
-            '{{ if index .Env "GITHUB_RUN_NUMBER" }}--label=com.github.actions.runNumber={{ .Env.GITHUB_RUN_NUMBER }}{{else}}--label={{end}}',
-            '{{ if index .Env "GITHUB_WORKFLOW" }}--label=com.github.actions.workflow={{ .Env.GITHUB_WORKFLOW }}{{else}}--label={{end}}',
-            '{{ if index .Env "RUNNER_NAME" }}--label=com.github.actions.runnerName={{ .Env.RUNNER_NAME }}{{else}}--label={{end}}',
-        ],
-    }
+# Removed deprecated create_docker_for_arch and create_docker_manifests_for_dockers functions.
 
 
-def create_docker_manifests_for_dockers(dockers):
-    image_templates = list(
-        itertools.chain.from_iterable([docker["image_templates"] for docker in dockers])
-    )
-
+def create_dockers_v2(builds):
+    # This replaces the logic of create_docker_for_arch and create_docker_manifests_for_dockers.
+    # It builds the consolidated dockers_v2 structure.
+    ids = [build["id"] for build in builds]
     return [
         {
-            "name_template": "quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}",
-            "image_templates": image_templates,
-        },
-        {
-            "name_template": "quay.io/zzlotnik/{{ .ProjectName }}:latest",
-            "image_templates": image_templates,
-        },
+            "dockerfile": DOCKERFILE_NAME,
+            "ids": ids,
+            "images": [
+                "quay.io/zzlotnik/{{ .ProjectName }}",
+            ],
+            "platforms": [
+                "linux/amd64",
+                "linux/arm64",
+            ],
+            "tags": [
+                "{{ .Version }}",
+                "latest",
+            ],
+            # Mapping from old build_flag_templates (labels) to new labels map format.
+            "labels": {
+                "org.opencontainers.image.title": "{{ .ProjectName }}",
+                "org.opencontainers.image.description": "{{ .ProjectName }}",
+                "org.opencontainers.image.url": "https://github.com/cheesesashimi/{{ .ProjectName }}",
+                "org.opencontainers.image.source": "https://github.com/cheesesashimi/{{ .ProjectName }}",
+                "org.opencontainers.image.version": "{{ .Version }}",
+                # The time template needs to be converted to a label value.
+                "org.opencontainers.image.created": "{{ .Date }}",
+                "org.opencontainers.image.revision": "{{ .FullCommit }}",
+                # GitHub Actions environment variable checks converted to label keys/values.
+                '{{ if index .Env "GITHUB_ACTIONS" }}com.github.actions{{else}}label-no-actions-env-1{{end}}': "",
+                '{{ if index .Env "GITHUB_RUN_ID" }}com.github.actions.runId{{else}}label-no-actions-env-2{{end}}': '{{ if index .Env "GITHUB_RUN_ID" }}{{ .Env.GITHUB_RUN_ID }}{{else}}{{end}}',
+                '{{ if index .Env "GITHUB_RUN_NUMBER" }}com.github.actions.runNumber{{else}}label-no-actions-env-3{{end}}': '{{ if index .Env "GITHUB_RUN_NUMBER" }}{{ .Env.GITHUB_RUN_NUMBER }}{{else}}{{end}}',
+                '{{ if index .Env "GITHUB_WORKFLOW" }}com.github.actions.workflow{{else}}label-no-actions-env-4{{end}}': '{{ if index .Env "GITHUB_WORKFLOW" }}{{ .Env.GITHUB_WORKFLOW }}{{else}}{{end}}',
+                '{{ if index .Env "RUNNER_NAME" }}com.github.actions.runnerName{{else}}label-no-actions-env-5{{end}}': '{{ if index .Env "RUNNER_NAME" }}{{ .Env.RUNNER_NAME }}{{else}}{{end}}',
+            },
+        }
     ]
 
 
@@ -95,13 +92,12 @@ def update_goreleaser_file(names):
     goreleaser_data["builds"] = [create_build(name) for name in names]
     goreleaser_data["builds"].sort(key=lambda x: x["id"])
 
-    goreleaser_data["dockers"] = [
-        create_docker_for_arch(goreleaser_data["builds"], arch)
-        for arch in ["amd64", "arm64"]
-    ]
-    goreleaser_data["docker_manifests"] = create_docker_manifests_for_dockers(
-        goreleaser_data["dockers"]
-    )
+    # Update with new dockers_v2 key and remove deprecated keys
+    goreleaser_data["dockers_v2"] = create_dockers_v2(goreleaser_data["builds"])
+    if "dockers" in goreleaser_data:
+        del goreleaser_data["dockers"]
+    if "docker_manifests" in goreleaser_data:
+        del goreleaser_data["docker_manifests"]
 
     with open(goreleaser, "w") as goreleaser_file:
         yaml.dump(goreleaser_data, goreleaser_file, Dumper=VerboseSafeDumper)
@@ -143,12 +139,15 @@ def update_dockerfile(names):
             dockerfile_lines.append(line.rstrip())
 
     dockerfile_lines.append("")
+    # Add ARG TARGETPLATFORM for use with dockers_v2 COPY [cite: 378, 980]
     dockerfile_lines.append("FROM quay.io/fedora/fedora:43 AS final")
+    dockerfile_lines.append("ARG TARGETPLATFORM")
     dockerfile_lines.append("COPY --from=fetcher /oc/oc /usr/local/bin/oc")
     dockerfile_lines.append("COPY --from=fetcher /oc/kubectl /usr/local/bin/kubectl")
 
+    # Update COPY commands to use $TARGETPLATFORM prefix as required by dockers_v2 [cite: 379, 982]
     for name in names:
-        dockerfile_lines.append(f"COPY {name} /usr/local/bin/{name}")
+        dockerfile_lines.append(f"COPY $TARGETPLATFORM/{name} /usr/local/bin/{name}")
 
     with open(DOCKERFILE_NAME, "w") as dockerfile:
         for line in dockerfile_lines:
