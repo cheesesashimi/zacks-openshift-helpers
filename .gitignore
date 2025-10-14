@@ -15,3 +15,5 @@ cmd/run-on-all-nodes/run-on-all-nodes
 cmd/wait-for-mcp/wait-for-mcp
 # Auto-added by update-configs.py to ignore ad-hoc Go binaries
 cmd/mcdiff/mcdiff
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+cmd/pull-from-imagestream/pull-from-imagestream

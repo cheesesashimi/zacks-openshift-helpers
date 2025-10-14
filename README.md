@@ -12,6 +12,10 @@ It is worth mentioning that these helpers may get your cluster into a
 difficult-to-recover-from state. So do not use these on a production OpenShift
 cluster.
 
+With the exception of the `cluster-lifecycle` and `pull-from-imagestream`
+helpers, these helpers are now actively being maintained within the Machine
+Config Operator repository described above.
+
 ## Installation
 
 ### GitHub Releases
@@ -45,8 +49,7 @@ It is also worth noting that these binaries are also baked into the following
 images as well, along with a few other of my favorite tools for working with
 Kubernetes clusters:
 
-- `quay.io/zzlotnik/toolbox:mco-fedora-39`
-- `quay.io/zzlotnik/toolbox:mco-fedora-40`
+- `quay.io/zzlotnik/toolbox:mco-fedora-43`
 
 *Note:* Although these images are rebuilt daily, there will be up to a 24-hour
 delay between when the latest binaries are made available here and when they

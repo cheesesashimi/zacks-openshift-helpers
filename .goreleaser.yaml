@@ -27,7 +27,7 @@ builds:
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/cluster-lifecycle
-- binary: mco-builder
+- binary: pull-from-imagestream
   env:
   - CGO_ENABLED=0
   goarch:
@@ -36,77 +36,13 @@ builds:
   goos:
   - darwin
   - linux
-  id: mco-builder
+  id: pull-from-imagestream
   ldflags:
   - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
-  main: ./cmd/mco-builder
-- binary: mco-push
-  env:
-  - CGO_ENABLED=0
-  goarch:
-  - amd64
-  - arm64
-  goos:
-  - darwin
-  - linux
-  id: mco-push
-  ldflags:
-  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
-  main: ./cmd/mco-push
-- binary: onclustertesting
-  env:
-  - CGO_ENABLED=0
-  goarch:
-  - amd64
-  - arm64
-  goos:
-  - darwin
-  - linux
-  id: onclustertesting
-  ldflags:
-  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
-  main: ./cmd/onclustertesting
-- binary: run-on-all-nodes
-  env:
-  - CGO_ENABLED=0
-  goarch:
-  - amd64
-  - arm64
-  goos:
-  - darwin
-  - linux
-  id: run-on-all-nodes
-  ldflags:
-  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
-  main: ./cmd/run-on-all-nodes
-- binary: wait-for-mcp
-  env:
-  - CGO_ENABLED=0
-  goarch:
-  - amd64
-  - arm64
-  goos:
-  - darwin
-  - linux
-  id: wait-for-mcp
-  ldflags:
-  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
-    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
-  main: ./cmd/wait-for-mcp
+  main: ./cmd/pull-from-imagestream
 changelog:
   filters:
     exclude:
@@ -150,11 +86,7 @@ dockers:
   goos: linux
   ids:
   - cluster-lifecycle
-  - mco-builder
-  - mco-push
-  - onclustertesting
-  - run-on-all-nodes
-  - wait-for-mcp
+  - pull-from-imagestream
   image_templates:
   - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-amd64
 - build_flag_templates:
@@ -182,11 +114,7 @@ dockers:
   goos: linux
   ids:
   - cluster-lifecycle
-  - mco-builder
-  - mco-push
-  - onclustertesting
-  - run-on-all-nodes
-  - wait-for-mcp
+  - pull-from-imagestream
   image_templates:
   - quay.io/zzlotnik/{{ .ProjectName }}:{{ .Version }}-arm64
 snapshot:

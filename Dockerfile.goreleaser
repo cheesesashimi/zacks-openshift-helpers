@@ -25,8 +25,4 @@ FROM quay.io/fedora/fedora:40 AS final
 COPY --from=fetcher /oc/oc /usr/local/bin/oc
 COPY --from=fetcher /oc/kubectl /usr/local/bin/kubectl
 COPY cluster-lifecycle /usr/local/bin/cluster-lifecycle
-COPY mco-builder /usr/local/bin/mco-builder
-COPY mco-push /usr/local/bin/mco-push
-COPY onclustertesting /usr/local/bin/onclustertesting
-COPY run-on-all-nodes /usr/local/bin/run-on-all-nodes
-COPY wait-for-mcp /usr/local/bin/wait-for-mcp
+COPY pull-from-imagestream /usr/local/bin/pull-from-imagestream
