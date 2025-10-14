@@ -6,7 +6,7 @@
 # It is embedded into Dockerfile.goreleaser by the hack/update-configs.py
 # script.
 
-FROM quay.io/fedora/fedora:40 AS fetcher
+FROM quay.io/fedora/fedora:43 AS fetcher
 WORKDIR /oc
 RUN <<EOF
 #!/usr/bin/env bash
@@ -21,7 +21,7 @@ if [[ "$(uname -m)" == "aarch64"  ]]; then
 fi
 EOF
 
-FROM quay.io/fedora/fedora:40 AS final
+FROM quay.io/fedora/fedora:43 AS final
 COPY --from=fetcher /oc/oc /usr/local/bin/oc
 COPY --from=fetcher /oc/kubectl /usr/local/bin/kubectl
 COPY cluster-lifecycle /usr/local/bin/cluster-lifecycle

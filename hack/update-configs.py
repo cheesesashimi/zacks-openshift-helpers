@@ -143,7 +143,7 @@ def update_dockerfile(names):
             dockerfile_lines.append(line.rstrip())
 
     dockerfile_lines.append("")
-    dockerfile_lines.append("FROM quay.io/fedora/fedora:40 AS final")
+    dockerfile_lines.append("FROM quay.io/fedora/fedora:43 AS final")
     dockerfile_lines.append("COPY --from=fetcher /oc/oc /usr/local/bin/oc")
     dockerfile_lines.append("COPY --from=fetcher /oc/kubectl /usr/local/bin/kubectl")
 

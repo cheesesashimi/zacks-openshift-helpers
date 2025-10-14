@@ -3,7 +3,7 @@
 # It is embedded into Dockerfile.goreleaser by the hack/update-configs.py
 # script.
 
-FROM quay.io/fedora/fedora:40 AS fetcher
+FROM quay.io/fedora/fedora:43 AS fetcher
 WORKDIR /oc
 RUN <<EOF
 #!/usr/bin/env bash
