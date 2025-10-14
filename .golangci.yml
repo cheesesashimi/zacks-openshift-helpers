@@ -1,122 +1,114 @@
----
+version: "2"
 run:
   concurrency: 6
-  deadline: 5m
-  skip-files:
-    - ".*_test\\.go"
-    - "lib/.*"
 linters:
-  disable-all: true
+  default: none
   enable:
-    #- deadcode
     - depguard
     - dupl
-    #- gochecknoinits
     - goconst
     - gocritic
-    - gofmt
-    - goimports
     - revive
     - gosec
     - govet
     - ineffassign
-    #- interfacer
-    #- maligned
     - misspell
-    #- prealloc
-    #- scopelint
-    - staticcheck
-    #- structcheck
-    #- typecheck
+    - staticcheck # Consolidates staticcheck, gosimple, and stylecheck.
     - unconvert
     - unparam
-    #- varcheck
-    #- errcheck
-    #- gochecknoglobals
     - gocyclo
-    #- lll
-    #- nakedret
-linters-settings:
-  gocritic:
-    enabled-checks:
-      # Diagnostic
-      - argOrder
-      - badCond
-      - caseOrder
-      - codegenComment
-      - commentedOutCode
-      - deprecatedComment
-      - dupArg
-      - dupBranchBody
-      - dupCase
-      - dupSubExpr
-      - exitAfterDefer
-      - flagDeref
-      - flagName
-      - nilValReturn
-      - offBy1
-      - weakCond
-      #- appendAssign
-      - octalLiteral
-      - sloppyReassign
+  exclusions:
+    paths:
+      - ".*_test\\.go"
+      - "lib/.*"
+      - "internal/experimental/"
+  settings:
+    gocritic:
+      enabled-checks:
+        # Diagnostic
+        - argOrder
+        - badCond
+        - caseOrder
+        - codegenComment
+        - commentedOutCode
+        - deprecatedComment
+        - dupArg
+        - dupBranchBody
+        - dupCase
+        - dupSubExpr
+        - exitAfterDefer
+        - flagDeref
+        - flagName
+        - nilValReturn
+        - offBy1
+        - weakCond
+        - octalLiteral
+        - sloppyReassign
 
-      # Performance
-      - equalFold
-      #- hugeParam
-      - indexAlloc
-      - rangeExprCopy
-      #- rangeValCopy
-      - appendCombine
+        # Performance
+        - equalFold
+        - indexAlloc
+        - rangeExprCopy
+        - appendCombine
 
-      # Style
-      - assignOp
-      - boolExprSimplify
-      - captLocal
-      - commentFormatting
-      - commentedOutImport
-      - defaultCaseOrder
-      - docStub
-      - elseif
-      - emptyFallthrough
-      - emptyStringTest
-      - hexLiteral
-      #- ifElseChain
-      - methodExprCall
-      - regexpMust
-      - singleCaseSwitch
-      - sloppyLen
-      - stringXbytes
-      - switchTrue
-      - typeAssertChain
-      - typeSwitchVar
-      - underef
-      - unlabelStmt
-      - unlambda
-      - unslice
-      - valSwap
-      - yodaStyleExpr
-      - wrapperFunc
+        # Style
+        - assignOp
+        - boolExprSimplify
+        - captLocal
+        - commentFormatting
+        - commentedOutImport
+        - defaultCaseOrder
+        - docStub
+        - elseif
+        - emptyFallthrough
+        - emptyStringTest
+        - hexLiteral
+        - methodExprCall
+        - regexpMust
+        - singleCaseSwitch
+        - sloppyLen
+        - stringXbytes
+        - switchTrue
+        - typeAssertChain
+        - typeSwitchVar
+        - underef
+        - unlabelStmt
+        - unlambda
+        - unslice
+        - valSwap
+        - yodaStyleExpr
+        - wrapperFunc
 
-      # Opinionated
-      - initClause
-      - nestingReduce
-      - ptrToRefParam
-      - typeUnparen
-      - unnecessaryBlock
-      #- builtinShadow
-      #- importShadow
-      - paramTypeCombine
-      #- unnamedResult
-  gosec:
-    severity: high
-    confidence: medium
-    excludes:
-      - G204
-  depguard:
-    rules:
-      Main:
-        deny:
-          - desc: "Use k8s.io/klog/v2 instead of github.com/golang/glog"
-            pkg: github.com/golang/glog
+        # Opinionated
+        - initClause
+        - nestingReduce
+        - ptrToRefParam
+        - typeUnparen
+        - unnecessaryBlock
+        - paramTypeCombine
+    gosec:
+      severity: high
+      confidence: medium
+      excludes:
+        - G204
+    depguard:
+      rules:
+        Main:
+          deny:
+            - desc: "Use k8s.io/klog/v2 instead of github.com/golang/glog"
+              pkg: github.com/golang/glog
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          disabled: true
+formatters:
+  enable:
+    - gofmt
+    - goimports
 output:
-  format: "checkstyle:checkstyle-golangci-lint.xml,junit-xml:junit-golangci-lint.xml,colored-line-number"
+  formats:
+    checkstyle:
+      path: checkstyle-golangci-lint.xml
+    text:
+      path: stdout

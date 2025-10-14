@@ -213,7 +213,7 @@ func (s *secretCreator) writeRESTConfigToFile(cfg *rest.Config, filename string)
 		Clusters: map[string]*clientcmdapi.Cluster{
 			clusterName: {
 				Server:                   cfg.Host,
-				CertificateAuthorityData: cfg.TLSClientConfig.CAData,
+				CertificateAuthorityData: cfg.CAData,
 			},
 		},
 		Contexts: map[string]*clientcmdapi.Context{

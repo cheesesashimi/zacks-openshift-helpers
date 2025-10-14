@@ -138,7 +138,7 @@ func setMachineConfigPoolPauseState(ctx context.Context, cs *framework.ClientSet
 	} else {
 		klog.Infof("Unpausing MachineConfigPool %s", mcp.Name)
 		if metav1.HasAnnotation(mcp.ObjectMeta, mcpPausedByHelper) {
-			delete(mcp.ObjectMeta.GetAnnotations(), mcpPausedByHelper)
+			delete(mcp.GetAnnotations(), mcpPausedByHelper)
 		} else {
 			klog.Warningf("MachineConfigPool %q missing annotation %q", mcp.Name, mcpPausedByHelper)
 		}

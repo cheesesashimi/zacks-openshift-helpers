@@ -1,8 +1,8 @@
 package repo
 
 import (
-	"embed"
-	_ "embed"
+	"embed"   //nolint:staticcheck // This is intentionally imported twice since embed.FS is used.
+	_ "embed" //nolint:staticcheck // This is intentionally imported twice since embed.FS is used.
 	"fmt"
 	"os"
 	"path/filepath"
@@ -225,11 +225,11 @@ func NewMCORepo(repoRoot string, mode BuildMode) (*MCORepo, error) {
 }
 
 func (m *MCORepo) RemoteFork() string {
-	return m.gitInfo.remoteURL
+	return m.remoteURL
 }
 
 func (m *MCORepo) Branch() string {
-	return m.gitInfo.branchName
+	return m.branchName
 }
 
 func (m *MCORepo) Root() string {
