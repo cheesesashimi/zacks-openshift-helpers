@@ -40,6 +40,7 @@ require (
 	github.com/coreos/ign-converter v0.0.0-20241125185625-2f773079ca81 // indirect
 	github.com/coreos/ignition v0.35.0 // indirect
 	github.com/coreos/ignition/v2 v2.20.0 // indirect
+	github.com/coreos/stream-metadata-go v0.4.10 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
