@@ -125,9 +125,11 @@ type Release struct {
 func GetReleaseController(kind, arch string) (ReleaseController, error) {
 	rcs := map[string]map[string]ReleaseController{
 		"ocp": {
-			"amd64": Amd64OcpReleaseController,
-			"arm64": Arm64OcpReleaseController,
-			"multi": MultiOcpReleaseController,
+			"amd64":   Amd64OcpReleaseController,
+			"arm64":   Arm64OcpReleaseController,
+			"ppc64le": Ppc64leOcpReleaseController,
+			"s390x":   S390xOcpReleaseController,
+			"multi":   MultiOcpReleaseController,
 		},
 		"okd": {
 			"amd64": Amd64OkdReleaseController,

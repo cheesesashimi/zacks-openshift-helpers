@@ -1,13 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os/user"
 	"path/filepath"
 	"strings"
 
-	"github.com/PaesslerAG/jsonpath"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
 	"k8s.io/klog"
@@ -69,43 +67,18 @@ func (i *inputOpts) validateForTeardown() error {
 }
 
 func (i *inputOpts) inferArchAndKindFromPullspec(pullspec string) error {
-	releaseInfoBytes, err := releasecontroller.GetReleaseInfo(pullspec)
+	releaseInfo, err := releasecontroller.GetReleaseInfo(pullspec)
 	if err != nil {
 		return err
 	}
 
-	releaseInfo := interface{}(nil)
-
-	if err := json.Unmarshal(releaseInfoBytes, &releaseInfo); err != nil {
-		return err
-	}
-
-	arch, err := jsonpath.Get(`config.architecture`, releaseInfo)
-	if err != nil {
-		return err
-	}
-
-	i.releaseArch = arch.(string)
-
-	if i.releaseArch == "" {
-		return fmt.Errorf("empty architecture field for release %s", pullspec)
-	}
-
-	releaseName, err := jsonpath.Get(`references.metadata.name`, releaseInfo)
-	if err != nil {
-		return err
-	}
-
-	releaseNameStr := releaseName.(string)
-
-	if releaseNameStr == "" {
-		return fmt.Errorf("empty release name field for release %s", pullspec)
-	}
+	i.releaseArch = releaseInfo.Config.Architecture
+	releaseName := releaseInfo.References.Name
 
 	switch {
-	case strings.Contains(releaseNameStr, "okd-scos"):
+	case strings.Contains(releaseName, "okd-scos"):
 		i.releaseKind = "okd-scos"
-	case strings.Contains(releaseNameStr, "okd"):
+	case strings.Contains(releaseName, "okd"):
 		i.releaseKind = "okd"
 	default:
 		i.releaseKind = "ocp"
