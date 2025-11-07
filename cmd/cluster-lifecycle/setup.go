@@ -190,7 +190,7 @@ func getReleaseFromController(opts inputOpts) (string, error) {
 
 	klog.Infof("Getting latest release for stream %s from %s", opts.releaseStream, rc)
 
-	release, err := rc.GetLatestReleaseForStream(opts.releaseStream)
+	release, err := rc.ReleaseStream(opts.releaseStream).Latest()
 	if err != nil {
 		return "", err
 	}

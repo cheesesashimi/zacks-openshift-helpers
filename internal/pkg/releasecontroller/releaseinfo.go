@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -13,19 +12,17 @@ import (
 
 // There is a way to do this in pure Go, but I'm lazy :P.
 func GetComponentPullspecForRelease(componentName, releasePullspec string) (string, error) {
-	template := fmt.Sprintf("{{range .references.spec.tags}}{{if eq .name %q}}{{.from.name}}{{end}}{{end}}", componentName)
-
-	outBuf := bytes.NewBuffer([]byte{})
-
-	cmd := exec.Command("oc", "adm", "release", "info", "-o=template="+template, releasePullspec)
-	cmd.Stdout = outBuf
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("could not get pullspec for component %q from release pullspec %q: %w", componentName, releasePullspec, err)
+	releaseInfo, err := GetReleaseInfo(releasePullspec)
+	if err != nil {
+		return "", fmt.Errorf("could not get release info for pullspec %q: %w", releasePullspec, err)
 	}
 
-	return strings.TrimSpace(outBuf.String()), nil
+	tagRef := releaseInfo.GetTagRefForComponentName(componentName)
+	if tagRef == nil {
+		return "", fmt.Errorf("release %q does not have a reference for %q", releasePullspec, componentName)
+	}
+
+	return tagRef.From.Name, nil
 }
 
 func getReleaseInfoBytes(releasePullspec, authfilePath string) ([]byte, error) {
@@ -73,6 +70,12 @@ type ReleaseInfo struct {
 	ReleasePullspec string                    `json:"releasePullspec,omitempty"`
 	Metadata        Metadata                  `json:"metadata,omitempty"`
 	DisplayVersions map[string]DisplayVersion `json:"displayVersions,omitempty"`
+}
+
+func (ri *ReleaseInfo) GetMachineOSShortVersion() string {
+	version := ri.DisplayVersions["machine-os"].Version
+	split := strings.Split(version, ".")
+	return strings.Join(split[0:2], ".")
 }
 
 func (ri *ReleaseInfo) GetTagRefForComponentName(name string) *imagev1.TagReference {

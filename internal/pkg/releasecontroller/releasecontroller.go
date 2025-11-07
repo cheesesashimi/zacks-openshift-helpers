@@ -12,32 +12,15 @@ import (
 
 type ReleaseController string
 
-func (r *ReleaseController) GetAllReleaseStreams() ([]string, error) {
-	tmp := map[string][]string{}
-	err := r.doHTTPRequestIntoStruct("/api/v1/releasestreams/all", &tmp)
-	out := []string{}
-	for key := range tmp {
-		out = append(out, key)
+func (r *ReleaseController) ReleaseStreams() *ReleaseStreams {
+	return &ReleaseStreams{rc: r}
+}
+
+func (r *ReleaseController) ReleaseStream(name string) *ReleaseStream {
+	return &ReleaseStream{
+		name: name,
+		rc:   r,
 	}
-	return out, err
-}
-
-func (r *ReleaseController) GetLatestReleaseForStream(stream string) (*Release, error) {
-	out := &Release{}
-	err := r.doHTTPRequestIntoStruct(filepath.Join("/api/v1/releasestream", stream, "latest"), out)
-	return out, err
-}
-
-func (r *ReleaseController) GetAllReleasesForStream(stream string) (*ReleaseTags, error) {
-	out := &ReleaseTags{}
-	err := r.doHTTPRequestIntoStruct(filepath.Join("/api/v1/releasestream", stream, "tags"), out)
-	return out, err
-}
-
-func (r *ReleaseController) GetReleaseStatus(stream, tag string) (*APIReleaseInfo, error) {
-	out := &APIReleaseInfo{}
-	err := r.doHTTPRequestIntoStruct(filepath.Join("/api/v1/releasestream", stream, "release", tag), out)
-	return out, err
 }
 
 // https://amd64.ocp.releases.ci.openshift.org/releasetag/4.15.0-0.nightly-2023-11-28-101923/json
@@ -49,19 +32,34 @@ func (r *ReleaseController) GetReleaseStatus(stream, tag string) (*APIReleaseInf
 // release info. The sole difference seems to be that $ oc adm release info
 // returns the fully qualified pullspec for the release instead of the tagged
 // pullspec.
-func (r *ReleaseController) GetReleaseInfo(tag string) ([]byte, error) {
-	return r.doHTTPRequestIntoBytes(filepath.Join("releasetag", tag, "json"))
+func (r *ReleaseController) GetReleaseInfoBytes(tag string) ([]byte, error) {
+	return r.doHTTPRequestIntoBytes(filepath.Join("releasetag", tag, "json"), url.Values{})
 }
 
-func (r *ReleaseController) doHTTPRequest(path string) (*http.Response, error) {
+func (r *ReleaseController) GetReleaseInfo(tag string) (*ReleaseInfo, error) {
+	out := &ReleaseInfo{}
+	err := r.doHTTPRequestIntoStruct(filepath.Join("releasetag", tag, "json"), url.Values{}, out)
+	return out, err
+}
+
+func (r *ReleaseController) getURLForPath(path string, vals url.Values) url.URL {
 	u := url.URL{
 		Scheme: "https",
 		Host:   string(*r),
 		Path:   path,
 	}
 
-	resp, err := http.Get(u.String())
+	if vals != nil {
+		u.RawQuery = vals.Encode()
+	}
 
+	return u
+}
+
+func (r *ReleaseController) doHTTPRequest(u url.URL) (*http.Response, error) {
+	fmt.Println("HTTP GET", u.String())
+
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +71,8 @@ func (r *ReleaseController) doHTTPRequest(path string) (*http.Response, error) {
 	return resp, nil
 }
 
-func (r *ReleaseController) doHTTPRequestIntoStruct(path string, out interface{}) error {
-	resp, err := r.doHTTPRequest(path)
+func (r *ReleaseController) doHTTPRequestIntoStruct(path string, vals url.Values, out interface{}) error {
+	resp, err := r.doHTTPRequest(r.getURLForPath(path, vals))
 	if err != nil {
 		return err
 	}
@@ -84,8 +82,8 @@ func (r *ReleaseController) doHTTPRequestIntoStruct(path string, out interface{}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (r *ReleaseController) doHTTPRequestIntoBytes(path string) ([]byte, error) {
-	resp, err := r.doHTTPRequest(path)
+func (r *ReleaseController) doHTTPRequestIntoBytes(path string, vals url.Values) ([]byte, error) {
+	resp, err := r.doHTTPRequest(r.getURLForPath(path, vals))
 	if err != nil {
 		return nil, err
 	}
@@ -109,18 +107,6 @@ const (
 	MultiOcpReleaseController   ReleaseController = "multi.ocp.releases.ci.openshift.org"
 	Amd64OkdReleaseController   ReleaseController = "amd64.origin.releases.ci.openshift.org"
 )
-
-type ReleaseTags struct {
-	Name string    `json:"name"`
-	Tags []Release `json:"tags"`
-}
-
-type Release struct {
-	Name        string `json:"name"`
-	Phase       string `json:"phase"`
-	Pullspec    string `json:"pullSpec"`
-	DownloadURL string `json:"downloadURL"`
-}
 
 func GetReleaseController(kind, arch string) (ReleaseController, error) {
 	rcs := map[string]map[string]ReleaseController{
