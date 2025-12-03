@@ -19,11 +19,11 @@ type APIReleaseInfo struct {
 	Results *VerificationJobsSummary `json:"results,omitempty"`
 	// UpgradesTo is the list of UpgradeHistory "to" this release tag
 	UpgradesTo []UpgradeHistory `json:"upgradesTo,omitempty"`
-	//UpgradesFrom is the list of UpgradeHistory "from" this release tag
+	// UpgradesFrom is the list of UpgradeHistory "from" this release tag
 	UpgradesFrom []UpgradeHistory `json:"upgradesFrom,omitempty"`
-	//ChangeLog is the html representation of the changes included in this release tag
+	// ChangeLog is the html representation of the changes included in this release tag
 	ChangeLog []byte `json:"changeLog,omitempty"`
-	//ChangeLogJson is the json representation of the changes included in this release tag
+	// ChangeLogJson is the json representation of the changes included in this release tag
 	ChangeLogJson ChangeLog `json:"changeLogJson,omitempty"`
 }
 
@@ -118,4 +118,16 @@ type Release struct {
 	Phase       string `json:"phase"`
 	Pullspec    string `json:"pullSpec"`
 	DownloadURL string `json:"downloadURL"`
+}
+
+type ReleaseNode struct {
+	Version string `json:"version"`
+	Payload string `json:"payload"`
+}
+
+type ReleaseEdge []int
+
+type ReleaseGraph struct {
+	Nodes []ReleaseNode `json:"nodes"`
+	Edges []ReleaseEdge `json:"edges"`
 }

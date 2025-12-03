@@ -12,6 +12,18 @@ import (
 
 type ReleaseController string
 
+func (r *ReleaseController) GraphForChannel(channel string) (*ReleaseGraph, error) {
+	out := &ReleaseGraph{}
+	err := r.doHTTPRequestIntoStruct("/graph", url.Values{"channel": []string{channel}}, out)
+	return out, err
+}
+
+func (r *ReleaseController) Graph() (*ReleaseGraph, error) {
+	out := &ReleaseGraph{}
+	err := r.doHTTPRequestIntoStruct("/graph", nil, out)
+	return out, err
+}
+
 func (r *ReleaseController) ReleaseStreams() *ReleaseStreams {
 	return &ReleaseStreams{rc: r}
 }
@@ -57,8 +69,6 @@ func (r *ReleaseController) getURLForPath(path string, vals url.Values) url.URL 
 }
 
 func (r *ReleaseController) doHTTPRequest(u url.URL) (*http.Response, error) {
-	fmt.Println("HTTP GET", u.String())
-
 	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err

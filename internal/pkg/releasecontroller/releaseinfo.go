@@ -121,5 +121,4 @@ func getReleaseInfo(releasePullspec, authfilePath string) (*ReleaseInfo, error) 
 	ri.ReleasePullspec = releasePullspec
 
 	return ri, nil
-
 }
