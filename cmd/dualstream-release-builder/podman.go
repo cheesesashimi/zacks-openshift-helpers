@@ -47,6 +47,17 @@ func (p *podmanClient) PullImage(pullspec string) error {
 	return nil
 }
 
+func (p *podmanClient) PushImage(pullspec string) error {
+	args := p.getPodmanPreamble("push")
+	args = append(args, pullspec)
+
+	if err := runCommandWithOutput(args); err != nil {
+		return fmt.Errorf("could not push image %s: %w", pullspec, err)
+	}
+
+	return nil
+}
+
 func (p *podmanClient) CreateContainer(pullspec, name string) error {
 	args := p.getPodmanPreamble("container", "create")
 	args = append(args, []string{"--name", name, pullspec}...)
