@@ -17,3 +17,5 @@ cmd/wait-for-mcp/wait-for-mcp
 cmd/mcdiff/mcdiff
 # Auto-added by update-configs.py to ignore ad-hoc Go binaries
 cmd/pull-from-imagestream/pull-from-imagestream
+# Auto-added by update-configs.py to ignore ad-hoc Go binaries
+cmd/dualstream-release-builder/dualstream-release-builder

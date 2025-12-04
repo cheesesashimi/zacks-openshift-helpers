@@ -25,6 +25,22 @@ builds:
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/cluster-lifecycle
+- binary: dualstream-release-builder
+  env:
+  - CGO_ENABLED=0
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: dualstream-release-builder
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
+  main: ./cmd/dualstream-release-builder
 - binary: pull-from-imagestream
   env:
   - CGO_ENABLED=0
@@ -53,6 +69,7 @@ dockers_v2:
 - dockerfile: Dockerfile.goreleaser
   ids:
   - cluster-lifecycle
+  - dualstream-release-builder
   - pull-from-imagestream
   images:
   - quay.io/zzlotnik/{{ .ProjectName }}
