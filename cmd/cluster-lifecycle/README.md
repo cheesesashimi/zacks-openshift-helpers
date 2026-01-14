@@ -46,10 +46,30 @@ This is a simple program intended to help bring up sandbox OpenShift clusters. I
 5. It writes a simple `install-config.yaml` to the working directory, using the provided prefix, cluster kind, and cluster arch to generate the name, e.g.: `zzlotnik-ocp-amd64`.
 6. It calls `openshift-install` within the working directory to bring up the cluster.
 
+## Using a preexisting `install-config.yaml`
+
+`cluster-lifecycle` now supports using a preexisting `install-config.yaml` file. When a path to such a file is provided, it will read the contents of the config file and perform the following actions:
+
+1. Copy the file into the work directory specified. This is done because `openshift-install` will delete the `install-config.yaml` file once its contents have been consumed. The original file will be left unmodified. It will not allow you to keep the `install-config.yaml` file in your work directory for this reason.
+2. Generate and override the cluster name within the file if the `--prefix` flag is set. The name will follow the same convention above of `<prefix>-<kind>-<arch>`. However, the architecture value will be read from the `controlPlane` section of the `install-config.yaml` file.
+3. Read the SSH key and pull secret files and inject them into the `install-config.yaml` file, overwriting any values present.
+4. If the `--enable-tech-preview` flag is used, it will add `TechPreviewNoUpgrade` to the file.
+
+```console
+cluster-lifecycle setup \
+        --enable-tech-preview \
+        --install-config "/path/to/your/install-config.yaml" \
+        --prefix "mycluster" \
+        --release-stream "4.22.0-0.ci" \
+        --release-kind ocp \
+        --ssh-key-path "/path/to/your/ssh/key" \
+        --pull-secret-path "/path/to/your/pull-secret" \
+        --work-dir "/path/to/your/desired-workdir"
+```
+
 ## Additional Features
 - By adding a `.vacation` file to the working directory, the program will skip cluster setup.
-- By adding a `.release` file to the working directory containing a release pullspec, the program will always bring up that release
+- By adding a `.release` file to the working directory containing a release pullspec, the program will always bring up that release.
 
 ## Limitations
 - Currently only supports AWS.
-- Install configs are baked into the binary and are naively generated.
