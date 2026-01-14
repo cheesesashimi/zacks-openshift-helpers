@@ -26,16 +26,16 @@ func init() {
 		},
 	}
 
+	setupCmd.PersistentFlags().StringVar(&setupOpts.installConfigPath, "install-config", "", "Path to OpenShift install config to use.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.postInstallManifestPath, "post-install-manifests", "", "Directory containing K8s manifests to apply after successful installation.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", defaultPullSecretPath, "Path to a pull secret that can pull from registry.ci.openshift.org")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releasePullspec, "release-pullspec", "", "An arbitrary release pullspec to spin up.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseArch, "release-arch", "amd64", fmt.Sprintf("Release arch, one of: %v", sets.List(installconfig.GetSupportedArches())))
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseKind, "release-kind", "ocp", fmt.Sprintf("Release kind, one of: %v", sets.List(installconfig.GetSupportedKinds())))
-	setupCmd.PersistentFlags().StringVar(&setupOpts.releaseStream, "release-stream", "4.14.0-0.ci", "The release stream to use")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.sshKeyPath, "ssh-key-path", defaultSSHKeyPath, "Path to an SSH key to embed in the installation config.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.prefix, "prefix", "$USER", "Prefix to add to the cluster name; will use current system user if not set.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.workDir, "work-dir", defaultWorkDir, "The directory to use for running openshift-install. Enables vacation and persistent install mode when used in a cron job.")
-	setupCmd.PersistentFlags().BoolVar(&setupOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
+	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", "", "Path to a pull secret that can pull from registry.ci.openshift.org")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.release.pullspec, "release-pullspec", "", "An arbitrary release pullspec to spin up.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.release.arch, "release-arch", "amd64", fmt.Sprintf("Release arch, one of: %v", sets.List(installconfig.GetSupportedArches())))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.release.kind, "release-kind", "ocp", fmt.Sprintf("Release kind, one of: %v", sets.List(installconfig.GetSupportedKinds())))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.release.stream, "release-stream", "4.14.0-0.ci", "The release stream to use")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.sshKeyPath, "ssh-key-path", "", "Path to an SSH key to embed in the installation config.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.prefix, "prefix", "", "Prefix to add to the cluster name; will use current system user if not set.")
+	setupCmd.PersistentFlags().StringVar(&setupOpts.workDir, "work-dir", "", "The directory to use for running openshift-install. Enables vacation and persistent install mode when used in a cron job.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableTechPreview, "enable-tech-preview", false, "Enables Tech Preview features")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", sets.List(installconfig.GetSupportedVariants())))
 
@@ -64,43 +64,29 @@ func runSetup(setupOpts inputOpts) error {
 		return err
 	}
 
-	releasePullspec, err := getRelease(&setupOpts)
+	pullspec, err := getRelease(&setupOpts)
 	if err != nil {
 		return err
 	}
 
-	klog.Infof("Cluster name: %s", setupOpts.clusterName())
+	setupOpts.release.pullspec = pullspec
 
-	if setupOpts.releaseStream != "" {
-		klog.Infof("Cluster kind: %s. Cluster arch: %s. Release stream: %s", setupOpts.releaseKind, setupOpts.releaseArch, setupOpts.releaseStream)
+	if setupOpts.release.stream != "" {
+		klog.Infof("Cluster kind: %s. Cluster arch: %s. Release stream: %s", setupOpts.release.kind, setupOpts.release.arch, setupOpts.release.stream)
 	} else {
-		klog.Infof("Cluster kind: %s. Cluster arch: %s.", setupOpts.releaseKind, setupOpts.releaseArch)
+		klog.Infof("Cluster kind: %s. Cluster arch: %s.", setupOpts.release.kind, setupOpts.release.arch)
 	}
 
-	klog.Infof("Found release %s", releasePullspec)
+	klog.Infof("Found release %s", setupOpts.release.pullspec)
 
-	logEntry := newSetupLogEntry(releasePullspec, setupOpts)
-	if err := logEntry.writeToCurrentInstallPath(setupOpts); err != nil {
-		return fmt.Errorf("unable to write log entry: %w", err)
-	}
-
-	defer func() {
-		// We write this twice to collect info that we don't have available until
-		// after the installation is complete, e.g., elapsed time, etc.
-		if err := logEntry.writeToCurrentInstallPath(setupOpts); err != nil {
-			klog.Fatalf("unable to write current install file: %s", err)
-		}
-
-		if err := logEntry.appendToLogFile(setupOpts); err != nil {
-			klog.Fatalf("unable to write log file: %s", err)
-		}
-	}()
-
-	if err := writeInstallConfig(setupOpts); err != nil {
+	installCfg, err := writeInstallConfig(setupOpts)
+	if err != nil {
 		return err
 	}
 
-	if err := extractInstaller(releasePullspec, setupOpts); err != nil {
+	klog.Infof("Cluster name: %s", installCfg.Name)
+
+	if err := extractInstaller(setupOpts.release.pullspec, setupOpts); err != nil {
 		return nil
 	}
 
@@ -131,20 +117,28 @@ func setupWorkDir(workDir string) error {
 	return os.MkdirAll(workDir, 0o755)
 }
 
-func writeInstallConfig(opts inputOpts) error {
-	installConfigPath := filepath.Join(opts.workDir, "install-config.yaml")
+func writeInstallConfig(opts inputOpts) (*installconfig.ParsedInstallConfig, error) {
+	finalInstallConfigPath := filepath.Join(opts.workDir, "install-config.yaml")
 
-	installConfig, err := installconfig.GetInstallConfig(opts.toInstallConfigOpts())
+	installCfgOpts := opts.toInstallConfigOpts()
+
+	if opts.installConfigPath == "" {
+		klog.Infof("Generating new install config")
+	} else {
+		klog.Infof("Using installconfig from %s", opts.installConfigPath)
+	}
+
+	installCfg, err := installconfig.GetInstallConfig(installCfgOpts)
 	if err != nil {
-		return fmt.Errorf("could not get install config: %w", err)
+		return nil, fmt.Errorf("could not generate install config: %w", err)
 	}
 
-	klog.Infof("Writing install config to %s", installConfigPath)
-	if err := os.WriteFile(installConfigPath, installConfig, 0o755); err != nil {
-		return fmt.Errorf("could not write install config: %w", err)
+	klog.Infof("Writing install config to %s", finalInstallConfigPath)
+	if err := os.WriteFile(finalInstallConfigPath, installCfg, 0o755); err != nil {
+		return nil, fmt.Errorf("could not write install config: %w", err)
 	}
 
-	return nil
+	return installconfig.ParseInstallConfig(installCfg)
 }
 
 func applyPostInstallManifests(opts inputOpts) error {
@@ -166,8 +160,8 @@ func applyPostInstallManifests(opts inputOpts) error {
 }
 
 func getRelease(opts *inputOpts) (string, error) {
-	if opts.releasePullspec != "" {
-		return opts.releasePullspec, opts.inferArchAndKindFromPullspec(opts.releasePullspec)
+	if opts.release.pullspec != "" {
+		return opts.release.pullspec, opts.inferArchAndKindFromPullspec(opts.release.pullspec)
 	}
 
 	releaseFileExists, err := isFileExists(opts.releaseFilePath())
@@ -176,21 +170,21 @@ func getRelease(opts *inputOpts) (string, error) {
 	}
 
 	if !releaseFileExists {
-		return getReleaseFromController(*opts)
+		return getReleaseFromController(opts.release)
 	}
 
 	return getReleaseFromFile(opts)
 }
 
-func getReleaseFromController(opts inputOpts) (string, error) {
-	rc, err := releasecontroller.GetReleaseController(opts.releaseKind, opts.releaseArch)
+func getReleaseFromController(rel release) (string, error) {
+	rc, err := releasecontroller.GetReleaseController(rel.kind, rel.arch)
 	if err != nil {
 		return "", err
 	}
 
-	klog.Infof("Getting latest release for stream %s from %s", opts.releaseStream, rc)
+	klog.Infof("Getting latest release for stream %s from %s", rel.stream, rc)
 
-	release, err := rc.ReleaseStream(opts.releaseStream).Latest()
+	release, err := rc.ReleaseStream(rel.stream).Latest()
 	if err != nil {
 		return "", err
 	}

@@ -10,14 +10,6 @@ import (
 	versioncmd "github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version"
 )
 
-const (
-	defaultUser       string = "$USER"
-	defaultWorkDir    string = "$HOME/.openshift-installer"
-	defaultSSHKeyPath string = "$HOME/.ssh/id_ed25519.pub"
-	// TODO: There are better ways to infer this in the github.com/containers repo.
-	defaultPullSecretPath string = "$HOME/.docker/config.json"
-)
-
 var (
 	rootCmd = &cobra.Command{
 		Use:   "cluster-lifecycle",

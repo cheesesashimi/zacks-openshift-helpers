@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -18,14 +19,19 @@ const (
 	vacationModeFile        string = ".vacation"
 )
 
+type release struct {
+	arch     string
+	kind     string
+	pullspec string
+	stream   string
+}
+
 type inputOpts struct {
+	installConfigPath       string
 	enableTechPreview       bool
 	postInstallManifestPath string
 	pullSecretPath          string
-	releaseArch             string
-	releaseKind             string
-	releasePullspec         string
-	releaseStream           string
+	release                 release
 	sshKeyPath              string
 	prefix                  string
 	workDir                 string
@@ -45,9 +51,20 @@ func (i *inputOpts) releaseFilePath() string {
 	return i.appendWorkDir(persistentReleaseFile)
 }
 
-func (i *inputOpts) clusterName() string {
-	cfgOpts := i.toInstallConfigOpts()
-	return cfgOpts.ClusterName()
+func (i *inputOpts) loadInstallConfigFromFile() (*installconfig.ParsedInstallConfig, error) {
+	cfg, err := os.ReadFile(i.installConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed, err := installconfig.ParseInstallConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	i.release.arch = parsed.Architecture
+
+	return parsed, err
 }
 
 func (i *inputOpts) logPath() string {
@@ -63,7 +80,13 @@ func (i *inputOpts) installerPath() string {
 }
 
 func (i *inputOpts) validateForTeardown() error {
-	return fixProvidedPath(&i.workDir)
+	wd, err := filepath.Abs(i.workDir)
+	if err != nil {
+		return err
+	}
+
+	i.workDir = wd
+	return nil
 }
 
 func (i *inputOpts) inferArchAndKindFromPullspec(pullspec string) error {
@@ -72,70 +95,91 @@ func (i *inputOpts) inferArchAndKindFromPullspec(pullspec string) error {
 		return err
 	}
 
-	i.releaseArch = releaseInfo.Config.Architecture
+	i.release.arch = releaseInfo.Config.Architecture
 	releaseName := releaseInfo.References.Name
 
 	switch {
 	case strings.Contains(releaseName, "okd-scos"):
-		i.releaseKind = "okd-scos"
+		i.release.kind = "okd-scos"
 	case strings.Contains(releaseName, "okd"):
-		i.releaseKind = "okd"
+		i.release.kind = "okd"
 	default:
-		i.releaseKind = "ocp"
+		i.release.kind = "ocp"
 	}
 
 	// Clear the release stream since we won't talk to a release controller here.
-	i.releaseStream = ""
+	i.release.stream = ""
 
-	klog.Infof("Inferred %s and %s for release %s", i.releaseArch, i.releaseKind, pullspec)
+	klog.Infof("Inferred %s and %s for release %s", i.release.arch, i.release.kind, pullspec)
 
 	return nil
 }
 
 func (i *inputOpts) validateForSetup() error {
-	if err := fixProvidedPath(&i.workDir); err != nil {
+	wd, err := filepath.Abs(i.workDir)
+	if err != nil {
 		return err
 	}
+
+	i.workDir = wd
 
 	klog.Infof("Workdir: %s", i.workDir)
 
-	if err := fixProvidedPath(&i.sshKeyPath); err != nil {
+	sp, err := filepath.Abs(i.sshKeyPath)
+	if err != nil {
 		return err
 	}
+
+	i.sshKeyPath = sp
 
 	klog.Infof("SSH key path: %s", i.sshKeyPath)
 
-	if err := fixProvidedPath(&i.pullSecretPath); err != nil {
+	psp, err := filepath.Abs(i.pullSecretPath)
+	if err != nil {
 		return err
 	}
 
+	i.pullSecretPath = psp
+
 	klog.Infof("Pull secret path: %s", i.pullSecretPath)
 
-	if i.prefix == defaultUser {
+	if i.prefix == "" && i.installConfigPath == "" {
 		u, err := user.Current()
 		if err != nil {
 			return err
 		}
 
 		i.prefix = u.Username
+		klog.Infof("Using prefix: %s", i.prefix)
 	}
 
-	klog.Infof("Using prefix: %s", i.prefix)
-
-	if i.releasePullspec == "" {
-		if i.releaseKind == "okd-scos" && !strings.Contains(i.releaseStream, "scos") {
-			return fmt.Errorf("invalid release stream %q for kind okd-scos", i.releaseStream)
+	if i.installConfigPath != "" {
+		icp, err := filepath.Abs(i.installConfigPath)
+		if err != nil {
+			return err
 		}
 
-		if i.releaseKind == "okd" && strings.Contains(i.releaseStream, "scos") {
-			return fmt.Errorf("invalid release stream %q for kind okd", i.releaseStream)
+		i.installConfigPath = icp
+
+		if strings.Contains(i.installConfigPath, i.workDir) {
+			return fmt.Errorf("provided installconfig cannot be inside workdir")
+		}
+	}
+
+	if i.release.pullspec == "" {
+		if i.release.kind == "okd-scos" && !strings.Contains(i.release.stream, "scos") {
+			return fmt.Errorf("invalid release stream %q for kind okd-scos", i.release.stream)
+		}
+
+		if i.release.kind == "okd" && strings.Contains(i.release.stream, "scos") {
+			return fmt.Errorf("invalid release stream %q for kind okd", i.release.stream)
 		}
 	} else {
-		if i.releaseKind == "" {
+		if i.release.kind == "" {
 			klog.Warningf("--release-kind will be ignored because --release-pullspec was used")
 		}
 
-		if i.releaseArch == "" {
+		if i.release.arch == "" {
 			klog.Warningf("--release-arch will be ignored because --release-pullspec was used")
 		}
 	}
@@ -145,28 +189,14 @@ func (i *inputOpts) validateForSetup() error {
 
 func (i *inputOpts) toInstallConfigOpts() installconfig.Opts {
 	return installconfig.Opts{
-		Arch:              i.releaseArch,
+		Arch:              i.release.arch,
 		EnableTechPreview: i.enableTechPreview,
-		Kind:              i.releaseKind,
-		PullSecretPath:    i.pullSecretPath,
-		SSHKeyPath:        i.sshKeyPath,
-		Prefix:            i.prefix,
+		Kind:              i.release.kind,
+		Paths: installconfig.Paths{
+			InstallConfigPath: i.installConfigPath,
+			PullSecretPath:    i.pullSecretPath,
+			SSHKeyPath:        i.sshKeyPath,
+		},
+		Prefix: i.prefix,
 	}
-}
-
-func fixProvidedPath(path *string) error {
-	pathCopy := *path
-	if !strings.Contains(pathCopy, "$HOME") {
-		return nil
-	}
-
-	u, err := user.Current()
-	if err != nil {
-		return err
-	}
-
-	out := strings.ReplaceAll(pathCopy, "$HOME/", "")
-	out = filepath.Join(u.HomeDir, out)
-	*path = out
-	return nil
 }

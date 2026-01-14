@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,9 +28,8 @@ func init() {
 		},
 	}
 
-	teardownCmd.PersistentFlags().StringVar(&teardownOpts.workDir, "work-dir", defaultWorkDir, "The directory to use for running openshift-install.")
+	teardownCmd.PersistentFlags().StringVar(&teardownOpts.workDir, "work-dir", "", "The directory to use for running openshift-install.")
 	teardownCmd.PersistentFlags().BoolVar(&teardownOpts.force, "force", false, "Runs openshift-install destroy cluster, if openshift-install is present.")
-	teardownCmd.PersistentFlags().BoolVar(&teardownOpts.writeLogFile, "write-log-file", false, "Keeps track of cluster setups and teardown by writing to "+clusterLifecycleLogFile)
 
 	rootCmd.AddCommand(teardownCmd)
 }
@@ -39,26 +37,6 @@ func init() {
 func teardown(teardownOpts teardownOpts) error {
 	if err := teardownOpts.validateForTeardown(); err != nil {
 		return err
-	}
-
-	if teardownOpts.writeLogFile {
-		ci, ciErr := readCurrentInstallFile(teardownOpts.inputOpts)
-		if ciErr != nil && !errors.Is(ciErr, os.ErrNotExist) {
-			if !teardownOpts.force {
-				return ciErr
-			}
-
-			klog.Errorf("Ignoring encountered error while trying to read %s because --force was used: %s", teardownOpts.currentInstallPath(), ciErr)
-		}
-		defer func() {
-			if ciErr != nil {
-				return
-			}
-
-			if err := ci.appendTeardownToLogFile(teardownOpts.inputOpts); err != nil {
-				klog.Fatalln(err)
-			}
-		}()
 	}
 
 	if teardownOpts.force {

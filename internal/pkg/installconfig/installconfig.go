@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ghodss/yaml"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -93,14 +92,19 @@ var baseInstallConfigAMD64 []byte
 //go:embed base-install-config-arm64.yaml
 var baseInstallConfigARM64 []byte
 
+type Paths struct {
+	SSHKeyPath        string
+	PullSecretPath    string
+	InstallConfigPath string
+}
+
 type Opts struct {
 	Prefix            string
 	Arch              string
 	Kind              string
-	SSHKeyPath        string
-	PullSecretPath    string
 	Variant           string
 	EnableTechPreview bool
+	Paths
 }
 
 func (o *Opts) ClusterName() string {
@@ -130,33 +134,17 @@ func (o *Opts) validateVariant() error {
 	return nil
 }
 
-func (o *Opts) validate() error {
+func (o *Opts) validateForConfigGeneration() error {
 	if o.Prefix == "" {
-		return fmt.Errorf("prefix must be provided")
-	}
-
-	if o.SSHKeyPath == "" {
-		return fmt.Errorf("ssh key path must be provided")
-	}
-
-	if _, err := os.Stat(o.SSHKeyPath); err != nil {
-		return err
-	}
-
-	if o.PullSecretPath == "" {
-		return fmt.Errorf("pull secret path must be provided")
-	}
-
-	if _, err := os.Stat(o.PullSecretPath); err != nil {
-		return err
+		return fmt.Errorf("prefix must be provided for config generation")
 	}
 
 	if o.Arch == "" {
-		return fmt.Errorf("architecture must be provided")
+		return fmt.Errorf("architecture must be provided for config generation")
 	}
 
 	if o.Kind == "" {
-		return fmt.Errorf("kind must be provided")
+		return fmt.Errorf("kind must be provided for config generation")
 	}
 
 	if _, err := IsValidKindAndArch(o.Kind, o.Arch); err != nil {
@@ -169,20 +157,52 @@ func (o *Opts) validate() error {
 		}
 	}
 
+	if o.SSHKeyPath == "" {
+		return fmt.Errorf("ssh key path must be provided for config generation")
+	}
+
+	if _, err := os.Stat(o.SSHKeyPath); err != nil {
+		return err
+	}
+
+	if o.PullSecretPath == "" {
+		return fmt.Errorf("pull secret path must be provided for config generation")
+	}
+
+	if _, err := os.Stat(o.PullSecretPath); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (o *Opts) getSingleNodeConfig() []byte {
+func (o *Opts) validateForConfigReuse() error {
+	if _, err := os.Stat(o.InstallConfigPath); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (o *Opts) validate() error {
+	if o.InstallConfigPath != "" {
+		return o.validateForConfigReuse()
+	}
+
+	return o.validateForConfigGeneration()
+}
+
+func (o *Opts) getBaseConfigForGeneration() []byte {
 	snoConfigs := map[string][]byte{
 		aarch64: singleNodeInstallConfigARM64,
 		amd64:   singleNodeInstallConfigAMD64,
 		arm64:   singleNodeInstallConfigARM64,
 	}
 
-	return snoConfigs[o.Arch]
-}
+	if o.Variant == singleNode {
+		return snoConfigs[o.Arch]
+	}
 
-func (o *Opts) getBaseConfig() []byte {
 	baseConfigs := map[string][]byte{
 		aarch64: baseInstallConfigARM64,
 		amd64:   baseInstallConfigAMD64,
@@ -194,55 +214,117 @@ func (o *Opts) getBaseConfig() []byte {
 	return baseConfigs[o.Arch]
 }
 
+func (o *Opts) loadInstallConfig() (*ParsedInstallConfig, error) {
+	cfg, err := os.ReadFile(o.InstallConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseInstallConfig(cfg)
+}
+
+func (o *Opts) getParsedBaseConfig() (*ParsedInstallConfig, error) {
+	return ParseInstallConfig(o.getBaseConfigForGeneration())
+}
+
 func GetInstallConfig(opts Opts) ([]byte, error) {
+	// TODO: Consolidate both of these paths.
+	if opts.InstallConfigPath == "" {
+		return generateInstallConfig(opts)
+	}
+
+	return prepareInstallConfig(opts)
+}
+
+func generateInstallConfig(opts Opts) ([]byte, error) {
 	if err := opts.validate(); err != nil {
 		return nil, fmt.Errorf("could not get install config: %w", err)
 	}
 
-	return renderConfig(opts)
+	config, err := opts.getParsedBaseConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	pullSecret, err := os.ReadFile(opts.PullSecretPath)
+	if err != nil {
+		return nil, err
+	}
+
+	sshKey, err := os.ReadFile(opts.SSHKeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	config.Name = opts.ClusterName()
+	config.Architecture = opts.Arch
+	config.SSHKey = string(sshKey)
+	config.PullSecret = string(pullSecret)
+
+	if opts.EnableTechPreview {
+		config.FeatureSet = "TechPreviewNoUpgrade"
+	}
+
+	return config.injectIntoRawCfg()
 }
 
-func renderConfig(opts Opts) ([]byte, error) {
-	pullSecret, err := loadFile(opts.PullSecretPath)
+// Reads in the given installconfig and injects the various values into it.
+func prepareInstallConfig(opts Opts) ([]byte, error) {
+	if err := opts.validateForConfigReuse(); err != nil {
+		return nil, err
+	}
+
+	paths := opts.Paths
+
+	config, err := opts.loadInstallConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	sshKey, err := loadFile(opts.SSHKeyPath)
-	if err != nil {
-		return nil, err
+	if config.Name == "" {
+		if opts.Prefix == "" {
+			return nil, fmt.Errorf("missing prefix for empty name field")
+		}
+
+		if opts.Kind == "" {
+			return nil, fmt.Errorf("missing kind for empty name field")
+		}
+
+		// Set this on the Opts struct to generate the name.
+		opts.Arch = config.Architecture
+
+		config.Name = opts.ClusterName()
 	}
 
-	// TODO: Use an actual struct for this.
-	parsed := map[string]interface{}{}
+	if paths.PullSecretPath != "" {
+		ps, err := os.ReadFile(paths.PullSecretPath)
+		if err != nil {
+			return nil, fmt.Errorf("could not read pull secret path from %s: %w", paths.PullSecretPath, err)
+		}
 
-	config := opts.getBaseConfig()
-	if opts.Variant == singleNode {
-		config = opts.getSingleNodeConfig()
+		config.PullSecret = string(ps)
 	}
 
-	if err := yaml.Unmarshal(config, &parsed); err != nil {
-		return nil, err
+	if config.PullSecret == "" {
+		return nil, fmt.Errorf("pull secret config field empty")
+	}
+
+	if paths.SSHKeyPath != "" {
+		sb, err := os.ReadFile(paths.SSHKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("could not read SSH key path from %s: %w", paths.SSHKeyPath, err)
+		}
+
+		config.SSHKey = string(sb)
+	}
+
+	if config.SSHKey == "" {
+		return nil, fmt.Errorf("SSH key config field empty")
 	}
 
 	if opts.EnableTechPreview {
-		parsed["featureSet"] = "TechPreviewNoUpgrade"
+		config.FeatureSet = "TechPreviewNoUpgrade"
 	}
 
-	parsed["pullSecret"] = pullSecret
-	parsed["sshKey"] = sshKey
-	parsed["metadata"] = map[string]interface{}{
-		"name":              opts.ClusterName(),
-		"creationTimestamp": nil,
-	}
-
-	return yaml.Marshal(parsed)
-}
-
-func loadFile(sshKeyPath string) (string, error) {
-	out, err := os.ReadFile(sshKeyPath)
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
+	return config.injectIntoRawCfg()
 }
