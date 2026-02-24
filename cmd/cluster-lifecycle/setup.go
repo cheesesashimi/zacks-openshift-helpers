@@ -38,6 +38,7 @@ func init() {
 	setupCmd.PersistentFlags().StringVar(&setupOpts.workDir, "work-dir", "", "The directory to use for running openshift-install. Enables vacation and persistent install mode when used in a cron job.")
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableTechPreview, "enable-tech-preview", false, "Enables Tech Preview features")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", sets.List(installconfig.GetSupportedVariants())))
+	setupCmd.PersistentFlags().StringVar(&setupOpts.preinstallcfg, "preinstallcfg", "", "Path to a script or binary to run after creating manifests but before installation.")
 
 	rootCmd.AddCommand(setupCmd)
 }
@@ -88,6 +89,20 @@ func runSetup(setupOpts inputOpts) error {
 
 	if err := extractInstaller(setupOpts.release.pullspec, setupOpts); err != nil {
 		return nil
+	}
+
+	// If a preinstall config script is given, create the manifests separately,
+	// then run the provided script before installation to configure the
+	// manifests. The script will be run within the context of the work
+	// directory.
+	if setupOpts.preinstallcfg != "" {
+		if err := generateManifests(setupOpts); err != nil {
+			return fmt.Errorf("unable to generate manifests for openshift-install: %w", err)
+		}
+
+		if err := runPreinstallCfg(setupOpts); err != nil {
+			return fmt.Errorf("could not run preinstall config script: %w", err)
+		}
 	}
 
 	if err := installCluster(setupOpts); err != nil {

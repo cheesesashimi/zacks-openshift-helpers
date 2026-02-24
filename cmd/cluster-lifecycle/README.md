@@ -67,6 +67,36 @@ cluster-lifecycle setup \
         --work-dir "/path/to/your/desired-workdir"
 ```
 
+## Performing pre-installation configuration
+
+`cluster-lifecycle` now supports generating the OpenShift manifests prior to installation running a given script upon them. To do this:
+
+1. Write the following script to a file called `/path/to/preinstallcfg.sh`.
+```bash
+#!/usr/bin/env bash
+
+# This script will use yq to enable the TechPreview feature set via the
+# specified manifest instead of doing it through the install-config.yaml file.
+
+yq -i '.spec.featureSet = "TechPreviewNoUpgrade"' ./openshift/99_feature-gate.yaml
+```
+
+2. Run `cluster-lifecycle` thusly:
+
+```console
+cluster-lifecycle setup \
+        --install-config "/path/to/your/install-config.yaml" \
+        --prefix "mycluster" \
+        --release-stream "4.22.0-0.ci" \
+        --release-kind ocp \
+        --ssh-key-path "/path/to/your/ssh/key" \
+        --pull-secret-path "/path/to/your/pull-secret" \
+        --work-dir "/path/to/your/desired-workdir" \
+        --preinstallcfg "/path/to/preinstallcfg.sh"
+```
+
+In this mode, `cluster-lifecycle` will run `openshift-install create manifests`, then run your script against it, then it will continue to run `openshift-install create cluster` afterward. If an error occurs, the script should return a non-zero exit code which will prevent `cluster-lifecycle` from continuing.
+
 ## Additional Features
 - By adding a `.vacation` file to the working directory, the program will skip cluster setup.
 - By adding a `.release` file to the working directory containing a release pullspec, the program will always bring up that release.

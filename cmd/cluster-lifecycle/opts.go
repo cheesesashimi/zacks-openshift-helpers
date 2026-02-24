@@ -33,6 +33,7 @@ type inputOpts struct {
 	pullSecretPath          string
 	release                 release
 	sshKeyPath              string
+	preinstallcfg           string
 	prefix                  string
 	workDir                 string
 	writeLogFile            bool

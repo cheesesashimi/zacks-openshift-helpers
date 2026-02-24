@@ -60,6 +60,42 @@ func extractInstaller(releasePullspec string, opts inputOpts) error {
 	return extractInstaller(releasePullspec, opts)
 }
 
+func generateManifests(opts inputOpts) error {
+	installerVersion, err := getInstallerVersion(opts)
+	if err != nil {
+		return err
+	}
+
+	klog.Info(installerVersion)
+
+	cmd := exec.Command(opts.installerPath(), "create", "manifests", "--dir", opts.workDir, "--log-level", "debug")
+	cmd.Dir = opts.workDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	klog.Infof("Running %s", cmd)
+	return cmd.Run()
+}
+
+func runPreinstallCfg(opts inputOpts) error {
+	if opts.preinstallcfg == "" {
+		return fmt.Errorf("no preinstall config script given")
+	}
+
+	absPath, err := filepath.Abs(opts.preinstallcfg)
+	if err != nil {
+		return fmt.Errorf("could not resolve absolute path for %s: %w", opts.preinstallcfg, err)
+	}
+
+	cmd := exec.Command(absPath)
+	cmd.Dir = opts.workDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	klog.Infof("Running preinstall config script %q", absPath)
+	return cmd.Run()
+}
+
 func installCluster(opts inputOpts) error {
 	installerVersion, err := getInstallerVersion(opts)
 	if err != nil {
