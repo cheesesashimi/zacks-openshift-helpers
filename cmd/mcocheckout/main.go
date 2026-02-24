@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/cmd/mcocheckout/internal/repo"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/containers"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
+	"github.com/davecgh/go-spew/spew"
 )
 
 func doMCORepoCheckout(ref string) error {
@@ -186,13 +186,25 @@ func run(input string) error {
 }
 
 func main() {
-	if len(os.Args) == 0 {
-		panic("must provide an arg")
-	}
-
-	input := os.Args[1]
-
-	if err := run(input); err != nil {
+	mcoRepo, err := repo.NewMCORepo()
+	if err != nil {
 		panic(err)
 	}
+
+	mc, err := mcoRepo.GetMergeCommits()
+	if err != nil {
+		panic(err)
+	}
+
+	spew.Dump(mc[0])
+
+	//	if len(os.Args) == 0 {
+	//		panic("must provide an arg")
+	//	}
+	//
+	// input := os.Args[1]
+	//
+	//	if err := run(input); err != nil {
+	//		panic(err)
+	//	}
 }

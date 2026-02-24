@@ -1,7 +1,11 @@
 package containers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/containers/image/v5/docker"
@@ -44,4 +48,28 @@ func AddLatestTagIfMissing(pullspec string) (string, error) {
 	}
 
 	return parsed.DockerReference().String(), nil
+}
+
+func GetImageLabelsWithSkopeo(pullspec string) (map[string]string, error) {
+	type info struct {
+		Labels map[string]string
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+
+	cmd := exec.Command("skopeo", "inspect", "--no-tags", "docker://"+pullspec)
+	cmd.Stdout = buf
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+
+	i := &info{}
+
+	if err := json.Unmarshal(buf.Bytes(), i); err != nil {
+		return nil, err
+	}
+
+	return i.Labels, nil
 }
