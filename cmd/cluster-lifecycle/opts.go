@@ -27,6 +27,7 @@ type release struct {
 }
 
 type inputOpts struct {
+	dryRun                  bool
 	installConfigPath       string
 	enableTechPreview       bool
 	postInstallManifestPath string

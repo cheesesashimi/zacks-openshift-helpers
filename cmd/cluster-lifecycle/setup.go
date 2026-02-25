@@ -39,6 +39,7 @@ func init() {
 	setupCmd.PersistentFlags().BoolVar(&setupOpts.enableTechPreview, "enable-tech-preview", false, "Enables Tech Preview features")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.variant, "variant", "", fmt.Sprintf("A cluster variant to bring up. One of: %v", sets.List(installconfig.GetSupportedVariants())))
 	setupCmd.PersistentFlags().StringVar(&setupOpts.preinstallcfg, "preinstallcfg", "", "Path to a script or binary to run after creating manifests but before installation.")
+	setupCmd.PersistentFlags().BoolVar(&setupOpts.dryRun, "dry-run", false, "Prepare but do not actually perform the installation.")
 
 	rootCmd.AddCommand(setupCmd)
 }
@@ -105,6 +106,12 @@ func runSetup(setupOpts inputOpts) error {
 		}
 	}
 
+	if setupOpts.dryRun {
+		klog.Info("Dry-run mode activated, will not create cluster. To create cluster:")
+		klog.Infof("cd %q && ./openshift-install create cluster --log-level debug", setupOpts.workDir)
+		return nil
+	}
+
 	if err := installCluster(setupOpts); err != nil {
 		return fmt.Errorf("unable to run openshift-install: %w", err)
 	}
@@ -134,6 +141,7 @@ func setupWorkDir(workDir string) error {
 
 func writeInstallConfig(opts inputOpts) (*installconfig.ParsedInstallConfig, error) {
 	finalInstallConfigPath := filepath.Join(opts.workDir, "install-config.yaml")
+	backupInstallConfigPath := finalInstallConfigPath + ".backup"
 
 	installCfgOpts := opts.toInstallConfigOpts()
 
@@ -150,6 +158,12 @@ func writeInstallConfig(opts inputOpts) (*installconfig.ParsedInstallConfig, err
 
 	klog.Infof("Writing install config to %s", finalInstallConfigPath)
 	if err := os.WriteFile(finalInstallConfigPath, installCfg, 0o755); err != nil {
+		return nil, fmt.Errorf("could not write install config: %w", err)
+	}
+
+	// Because openshift-install consumes the installation config, we write a backup version.
+	klog.Infof("Writing backup install config to %s", backupInstallConfigPath)
+	if err := os.WriteFile(backupInstallConfigPath, installCfg, 0o755); err != nil {
 		return nil, fmt.Errorf("could not write install config: %w", err)
 	}
 
