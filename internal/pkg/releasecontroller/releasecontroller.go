@@ -145,3 +145,14 @@ func GetReleaseController(kind, arch string) (ReleaseController, error) {
 
 	return rcs[kind][arch], nil
 }
+
+func All() []ReleaseController {
+	return []ReleaseController{
+		Amd64OcpReleaseController,
+		Arm64OcpReleaseController,
+		Ppc64leOcpReleaseController,
+		S390xOcpReleaseController,
+		MultiOcpReleaseController,
+		Amd64OkdReleaseController,
+	}
+}

@@ -1,7 +1,26 @@
 package releasecontroller
 
+import "fmt"
+
 type ReleaseStreams struct {
 	rc *ReleaseController
+}
+
+func (r *ReleaseStreams) FindReleaseNameAndStream(name string) (string, string, error) {
+	streams, err := r.All()
+	if err != nil {
+		return "", "", err
+	}
+
+	for stream, releases := range streams {
+		for _, release := range releases {
+			if release == name {
+				return stream, release, nil
+			}
+		}
+	}
+
+	return "", "", fmt.Errorf("could not find release %q", name)
 }
 
 func (r *ReleaseStreams) Accepted() (map[string][]string, error) {
