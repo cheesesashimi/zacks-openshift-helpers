@@ -8,7 +8,6 @@ import (
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
-	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/utils"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
@@ -27,7 +26,6 @@ func init() {
 	}
 
 	setupCmd.PersistentFlags().StringVar(&setupOpts.installConfigPath, "install-config", "", "Path to OpenShift install config to use.")
-	setupCmd.PersistentFlags().StringVar(&setupOpts.postInstallManifestPath, "post-install-manifests", "", "Directory containing K8s manifests to apply after successful installation.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.pullSecretPath, "pull-secret-path", "", "Path to a pull secret that can pull from registry.ci.openshift.org")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.release.pullspec, "release-pullspec", "", "An arbitrary release pullspec to spin up.")
 	setupCmd.PersistentFlags().StringVar(&setupOpts.release.arch, "release-arch", "amd64", fmt.Sprintf("Release arch, one of: %v", sets.List(installconfig.GetSupportedArches())))
@@ -116,10 +114,6 @@ func runSetup(setupOpts inputOpts) error {
 		return fmt.Errorf("unable to run openshift-install: %w", err)
 	}
 
-	if err := applyPostInstallManifests(setupOpts); err != nil {
-		return err
-	}
-
 	klog.Infof("Installation complete!")
 	return nil
 }
@@ -168,24 +162,6 @@ func writeInstallConfig(opts inputOpts) (*installconfig.ParsedInstallConfig, err
 	}
 
 	return installconfig.ParseInstallConfig(installCfg)
-}
-
-func applyPostInstallManifests(opts inputOpts) error {
-	if opts.postInstallManifestPath == "" {
-		klog.Infof("No post-installation manifests to apply")
-		return nil
-	}
-
-	klog.Infof("Applying post installation manifests from %s", opts.postInstallManifestPath)
-
-	cmd := exec.Command("oc", "apply", "-f", opts.postInstallManifestPath)
-	cmd.Env = utils.ToEnvVars(map[string]string{
-		"KUBECONFIG": filepath.Join(opts.workDir, "auth", "kubeconfig"),
-	})
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	klog.Infof("Running %s", cmd)
-	return cmd.Run()
 }
 
 func getRelease(opts *inputOpts) (string, error) {
