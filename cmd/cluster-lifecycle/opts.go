@@ -27,18 +27,17 @@ type release struct {
 }
 
 type inputOpts struct {
-	dryRun                  bool
-	installConfigPath       string
-	enableTechPreview       bool
-	postInstallManifestPath string
-	pullSecretPath          string
-	release                 release
-	sshKeyPath              string
-	preinstallcfg           string
-	prefix                  string
-	workDir                 string
-	writeLogFile            bool
-	variant                 string
+	dryRun            bool
+	installConfigPath string
+	enableTechPreview bool
+	pullSecretPath    string
+	release           release
+	sshKeyPath        string
+	preinstallcfg     string
+	prefix            string
+	workDir           string
+	writeLogFile      bool
+	variant           string
 }
 
 func (i *inputOpts) appendWorkDir(path string) string {

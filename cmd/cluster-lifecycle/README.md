@@ -100,6 +100,3 @@ In this mode, `cluster-lifecycle` will run `openshift-install create manifests`,
 ## Additional Features
 - By adding a `.vacation` file to the working directory, the program will skip cluster setup.
 - By adding a `.release` file to the working directory containing a release pullspec, the program will always bring up that release.
-
-## Limitations
-- Currently only supports AWS.
