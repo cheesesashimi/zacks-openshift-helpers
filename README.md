@@ -12,9 +12,9 @@ It is worth mentioning that these helpers may get your cluster into a
 difficult-to-recover-from state. So do not use these on a production OpenShift
 cluster.
 
-With the exception of the `cluster-lifecycle` and `pull-from-imagestream`
-helpers, these helpers are now actively being maintained within the Machine
-Config Operator repository described above.
+With the exception of the `cluster-lifecycle` helper, these helpers are now
+actively being maintained within the Machine Config Operator repository
+described above.
 
 ## Installation
 
@@ -55,10 +55,11 @@ Kubernetes clusters:
 delay between when the latest binaries are made available here and when they
 are available in those images.
 
-## Further Notes
+## Misc. Notes
 
-- There is an `experimental` directory which contains purely experimental code. Use at your own risk.
-- I purposely put all of my code under an `internal/` directory as I do not
-  want this repository to be depended on for right now. However, that might change in the future.
-- I have a cron job that periodically deletes recently-run GitHub Actions.
-- As of `v0.0.20`, the binaries are no longer built with CGO enabled.
+Libraries and other code within this repository can be removed at any time.
+This means this repository should not be used as a dependency. Any deleted code
+shall be preserved within the Git history of this repository.
+
+Any past binaries or container images produced via GitHub Actions will not be
+actively pruned or deleted. However, they should be used at your own risk.
