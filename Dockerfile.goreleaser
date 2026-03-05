@@ -26,3 +26,4 @@ ARG TARGETPLATFORM
 COPY --from=fetcher /oc/oc /usr/local/bin/oc
 COPY --from=fetcher /oc/kubectl /usr/local/bin/kubectl
 COPY $TARGETPLATFORM/cluster-lifecycle /usr/local/bin/cluster-lifecycle
+COPY $TARGETPLATFORM/rcctl /usr/local/bin/rcctl

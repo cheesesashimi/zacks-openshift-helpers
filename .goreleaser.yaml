@@ -25,6 +25,22 @@ builds:
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
     -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
   main: ./cmd/cluster-lifecycle
+- binary: rcctl
+  env:
+  - CGO_ENABLED=0
+  goarch:
+  - amd64
+  - arm64
+  goos:
+  - darwin
+  - linux
+  id: rcctl
+  ldflags:
+  - -s -w -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.version={{.Version}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.commit={{.Commit}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.date={{.Date}}
+    -X github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/version.builtBy=goreleaser
+  main: ./cmd/rcctl
 changelog:
   filters:
     exclude:
@@ -37,6 +53,7 @@ dockers_v2:
 - dockerfile: Dockerfile.goreleaser
   ids:
   - cluster-lifecycle
+  - rcctl
   images:
   - quay.io/zzlotnik/{{ .ProjectName }}
   labels:
