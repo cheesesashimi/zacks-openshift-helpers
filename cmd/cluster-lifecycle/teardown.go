@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	aggerrs "k8s.io/apimachinery/pkg/util/errors"
@@ -24,7 +27,9 @@ func init() {
 		Short: "Brings up an OpenShift cluster for testing purposes",
 		Long:  "",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return teardown(teardownOpts)
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			return teardown(ctx, teardownOpts)
 		},
 	}
 
@@ -34,19 +39,19 @@ func init() {
 	rootCmd.AddCommand(teardownCmd)
 }
 
-func teardown(teardownOpts teardownOpts) error {
+func teardown(ctx context.Context, teardownOpts teardownOpts) error {
 	if err := teardownOpts.validateForTeardown(); err != nil {
 		return err
 	}
 
 	if teardownOpts.force {
-		return forcedTeardown(teardownOpts)
+		return forcedTeardown(ctx, teardownOpts)
 	}
 
-	return gracefulTeardown(teardownOpts)
+	return gracefulTeardown(ctx, teardownOpts)
 }
 
-func gracefulTeardown(opts teardownOpts) error {
+func gracefulTeardown(ctx context.Context, opts teardownOpts) error {
 	filesToCheckFor := []string{
 		opts.installerPath(),
 		opts.appendWorkDir("metadata.json"),
@@ -64,7 +69,7 @@ func gracefulTeardown(opts teardownOpts) error {
 		}
 	}
 
-	if err := destroyCluster(opts); err != nil {
+	if err := destroyCluster(ctx, opts); err != nil {
 		return fmt.Errorf("unable to destroy cluster: %w", err)
 	}
 
@@ -76,10 +81,10 @@ func gracefulTeardown(opts teardownOpts) error {
 	return nil
 }
 
-func forcedTeardown(opts teardownOpts) error {
+func forcedTeardown(ctx context.Context, opts teardownOpts) error {
 	errs := []error{}
 
-	if err := destroyCluster(opts); err != nil {
+	if err := destroyCluster(ctx, opts); err != nil {
 		err = fmt.Errorf("unable to destroy cluster: %w", err)
 		klog.Errorf("Ignoring error while destroying cluster: %s", err)
 		errs = append(errs, err)

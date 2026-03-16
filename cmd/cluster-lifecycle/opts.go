@@ -7,7 +7,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
@@ -92,10 +91,7 @@ func (i *inputOpts) validateForTeardown() error {
 	return nil
 }
 
-func (i *inputOpts) inferArchAndKindFromPullspec(pullspec string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
+func (i *inputOpts) inferArchAndKindFromPullspec(ctx context.Context, pullspec string) error {
 	releaseInfo, err := releasecontroller.GetReleaseInfo(ctx, pullspec)
 	if err != nil {
 		return err

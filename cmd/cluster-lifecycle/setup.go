@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
-	"time"
+	"syscall"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
@@ -23,7 +24,9 @@ func init() {
 		Short: "Brings up an OpenShift cluster for testing purposes",
 		Long:  "",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runSetup(setupOpts)
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+			return runSetup(ctx, setupOpts)
 		},
 	}
 
@@ -44,7 +47,7 @@ func init() {
 	rootCmd.AddCommand(setupCmd)
 }
 
-func runSetup(setupOpts inputOpts) error {
+func runSetup(ctx context.Context, setupOpts inputOpts) error {
 	_, err := exec.LookPath("oc")
 	if err != nil {
 		return fmt.Errorf("missing required binary oc")
@@ -66,7 +69,7 @@ func runSetup(setupOpts inputOpts) error {
 		return err
 	}
 
-	pullspec, err := getRelease(&setupOpts)
+	pullspec, err := getRelease(ctx, &setupOpts)
 	if err != nil {
 		return err
 	}
@@ -88,7 +91,7 @@ func runSetup(setupOpts inputOpts) error {
 
 	klog.Infof("Cluster name: %s", installCfg.Name)
 
-	if err := extractInstaller(setupOpts.release.pullspec, setupOpts); err != nil {
+	if err := extractInstaller(ctx, setupOpts.release.pullspec, setupOpts); err != nil {
 		return nil
 	}
 
@@ -97,11 +100,11 @@ func runSetup(setupOpts inputOpts) error {
 	// manifests. The script will be run within the context of the work
 	// directory.
 	if setupOpts.preinstallcfg != "" {
-		if err := generateManifests(setupOpts); err != nil {
+		if err := generateManifests(ctx, setupOpts); err != nil {
 			return fmt.Errorf("unable to generate manifests for openshift-install: %w", err)
 		}
 
-		if err := runPreinstallCfg(setupOpts); err != nil {
+		if err := runPreinstallCfg(ctx, setupOpts); err != nil {
 			return fmt.Errorf("could not run preinstall config script: %w", err)
 		}
 	}
@@ -112,7 +115,7 @@ func runSetup(setupOpts inputOpts) error {
 		return nil
 	}
 
-	if err := installCluster(setupOpts); err != nil {
+	if err := installCluster(ctx, setupOpts); err != nil {
 		return fmt.Errorf("unable to run openshift-install: %w", err)
 	}
 
@@ -166,9 +169,9 @@ func writeInstallConfig(opts inputOpts) (*installconfig.ParsedInstallConfig, err
 	return installconfig.ParseInstallConfig(installCfg)
 }
 
-func getRelease(opts *inputOpts) (string, error) {
+func getRelease(ctx context.Context, opts *inputOpts) (string, error) {
 	if opts.release.pullspec != "" {
-		return opts.release.pullspec, opts.inferArchAndKindFromPullspec(opts.release.pullspec)
+		return opts.release.pullspec, opts.inferArchAndKindFromPullspec(ctx, opts.release.pullspec)
 	}
 
 	releaseFileExists, err := isFileExists(opts.releaseFilePath())
@@ -177,16 +180,13 @@ func getRelease(opts *inputOpts) (string, error) {
 	}
 
 	if !releaseFileExists {
-		return getReleaseFromController(opts.release)
+		return getReleaseFromController(ctx, opts.release)
 	}
 
-	return getReleaseFromFile(opts)
+	return getReleaseFromFile(ctx, opts)
 }
 
-func getReleaseFromController(rel release) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+func getReleaseFromController(ctx context.Context, rel release) (string, error) {
 	rc, err := releasecontroller.GetReleaseController(rel.kind, rel.arch)
 	if err != nil {
 		return "", err
@@ -202,7 +202,7 @@ func getReleaseFromController(rel release) (string, error) {
 	return release.Pullspec, nil
 }
 
-func getReleaseFromFile(opts *inputOpts) (string, error) {
+func getReleaseFromFile(ctx context.Context, opts *inputOpts) (string, error) {
 	releasePath := filepath.Join(opts.workDir, persistentReleaseFile)
 	releaseBytes, err := os.ReadFile(releasePath)
 	if err != nil {
@@ -214,7 +214,7 @@ func getReleaseFromFile(opts *inputOpts) (string, error) {
 		return "", fmt.Errorf("release file %s exists, but is empty", releasePath)
 	}
 
-	return release, opts.inferArchAndKindFromPullspec(release)
+	return release, opts.inferArchAndKindFromPullspec(ctx, release)
 }
 
 func isInVacationMode(opts inputOpts) (bool, error) {

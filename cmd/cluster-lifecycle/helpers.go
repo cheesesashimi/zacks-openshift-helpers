@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,7 +15,7 @@ import (
 	"k8s.io/klog"
 )
 
-func extractInstaller(releasePullspec string, opts inputOpts) error {
+func extractInstaller(ctx context.Context, releasePullspec string, opts inputOpts) error {
 	installerPath := opts.installerPath()
 
 	installerExists, err := isFileExists(installerPath)
@@ -29,7 +30,7 @@ func extractInstaller(releasePullspec string, opts inputOpts) error {
 			klog.Infof("Installer extracted in %s", time.Since(start))
 		}()
 
-		cmd := exec.Command("oc", "adm", "release", "extract", "--registry-config", opts.pullSecretPath, "--command", "openshift-install", releasePullspec, "--to", opts.workDir)
+		cmd := exec.CommandContext(ctx, "oc", "adm", "release", "extract", "--registry-config", opts.pullSecretPath, "--command", "openshift-install", releasePullspec, "--to", opts.workDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		klog.Infof("Running %s", cmd)
@@ -37,7 +38,7 @@ func extractInstaller(releasePullspec string, opts inputOpts) error {
 	}
 
 	klog.Infof("Found a preexisting openshift-install binary at %s, checking version", installerPath)
-	installerVersion, err := getInstallerVersion(opts)
+	installerVersion, err := getInstallerVersion(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -57,18 +58,18 @@ func extractInstaller(releasePullspec string, opts inputOpts) error {
 		return fmt.Errorf("unable to remove openshift-install: %w", err)
 	}
 
-	return extractInstaller(releasePullspec, opts)
+	return extractInstaller(ctx, releasePullspec, opts)
 }
 
-func generateManifests(opts inputOpts) error {
-	installerVersion, err := getInstallerVersion(opts)
+func generateManifests(ctx context.Context, opts inputOpts) error {
+	installerVersion, err := getInstallerVersion(ctx, opts)
 	if err != nil {
 		return err
 	}
 
 	klog.Info(installerVersion)
 
-	cmd := exec.Command(opts.installerPath(), "create", "manifests", "--dir", opts.workDir, "--log-level", "debug")
+	cmd := exec.CommandContext(ctx, opts.installerPath(), "create", "manifests", "--dir", opts.workDir, "--log-level", "debug")
 	cmd.Dir = opts.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -77,7 +78,7 @@ func generateManifests(opts inputOpts) error {
 	return cmd.Run()
 }
 
-func runPreinstallCfg(opts inputOpts) error {
+func runPreinstallCfg(ctx context.Context, opts inputOpts) error {
 	if opts.preinstallcfg == "" {
 		return fmt.Errorf("no preinstall config script given")
 	}
@@ -87,7 +88,7 @@ func runPreinstallCfg(opts inputOpts) error {
 		return fmt.Errorf("could not resolve absolute path for %s: %w", opts.preinstallcfg, err)
 	}
 
-	cmd := exec.Command(absPath)
+	cmd := exec.CommandContext(ctx, absPath)
 	cmd.Dir = opts.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -96,15 +97,15 @@ func runPreinstallCfg(opts inputOpts) error {
 	return cmd.Run()
 }
 
-func installCluster(opts inputOpts) error {
-	installerVersion, err := getInstallerVersion(opts)
+func installCluster(ctx context.Context, opts inputOpts) error {
+	installerVersion, err := getInstallerVersion(ctx, opts)
 	if err != nil {
 		return err
 	}
 
 	klog.Info(installerVersion)
 
-	cmd := exec.Command(opts.installerPath(), "create", "cluster", "--dir", opts.workDir, "--log-level", "debug")
+	cmd := exec.CommandContext(ctx, opts.installerPath(), "create", "cluster", "--dir", opts.workDir, "--log-level", "debug")
 	cmd.Dir = opts.workDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -113,8 +114,8 @@ func installCluster(opts inputOpts) error {
 	return cmd.Run()
 }
 
-func destroyCluster(opts teardownOpts) error {
-	installerVersion, err := getInstallerVersion(opts.inputOpts)
+func destroyCluster(ctx context.Context, opts teardownOpts) error {
+	installerVersion, err := getInstallerVersion(ctx, opts.inputOpts)
 	if err != nil {
 		return err
 	}
@@ -122,7 +123,7 @@ func destroyCluster(opts teardownOpts) error {
 	klog.Info(installerVersion)
 
 	installerPath := filepath.Join(opts.workDir, "openshift-install")
-	cmd := exec.Command(installerPath, "destroy", "cluster", "--dir", opts.workDir, "--log-level", "debug")
+	cmd := exec.CommandContext(ctx, installerPath, "destroy", "cluster", "--dir", opts.workDir, "--log-level", "debug")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -130,8 +131,8 @@ func destroyCluster(opts teardownOpts) error {
 	return cmd.Run()
 }
 
-func getInstallerVersion(opts inputOpts) (string, error) {
-	cmd := exec.Command(opts.installerPath(), "version")
+func getInstallerVersion(ctx context.Context, opts inputOpts) (string, error) {
+	cmd := exec.CommandContext(ctx, opts.installerPath(), "version")
 	cmd.Dir = opts.workDir
 	out := bytes.NewBuffer([]byte{})
 	cmd.Stdout = out
