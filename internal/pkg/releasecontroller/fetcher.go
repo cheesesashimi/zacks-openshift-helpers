@@ -2,6 +2,7 @@ package releasecontroller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ import (
 )
 
 type releaseInfoFetcher struct {
-	rc ReleaseController
+	rc *ReleaseController
 }
 
 type ReleaseInfoResults struct {
@@ -25,19 +26,19 @@ type componentImageMetadata struct {
 	data json.RawMessage
 }
 
-func NewReleaseInfoFetcher(rc ReleaseController) *releaseInfoFetcher {
+func NewReleaseInfoFetcher(rc *ReleaseController) *releaseInfoFetcher {
 	return &releaseInfoFetcher{
 		rc: rc,
 	}
 }
 
-func (r *releaseInfoFetcher) FetchReleaseInfo(tagOrPullspec string) (*ReleaseInfoResults, error) {
-	ri, _, err := r.getReleaseInfoForPullspec(tagOrPullspec)
+func (r *releaseInfoFetcher) FetchReleaseInfo(ctx context.Context, tagOrPullspec string) (*ReleaseInfoResults, error) {
+	ri, _, err := r.getReleaseInfoForPullspec(ctx, tagOrPullspec)
 	return ri, err
 }
 
-func (r *releaseInfoFetcher) FetchWithComponents(tagOrPullspec string, components []string) (*ReleaseInfoResults, error) {
-	ri, _, err := r.getReleaseInfoForPullspec(tagOrPullspec)
+func (r *releaseInfoFetcher) FetchWithComponents(ctx context.Context, tagOrPullspec string, components []string) (*ReleaseInfoResults, error) {
+	ri, _, err := r.getReleaseInfoForPullspec(ctx, tagOrPullspec)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +48,7 @@ func (r *releaseInfoFetcher) FetchWithComponents(tagOrPullspec string, component
 		return nil, err
 	}
 
-	cim, err := r.fetchAllComponentMetadata(results, components)
+	cim, err := r.fetchAllComponentMetadata(ctx, results, components)
 	if err != nil {
 		return nil, err
 	}
@@ -59,11 +60,11 @@ func (r *releaseInfoFetcher) FetchWithComponents(tagOrPullspec string, component
 	return ri, nil
 }
 
-func (r *releaseInfoFetcher) FetchWithAllComponents(tagOrPullspec string) (*ReleaseInfoResults, error) {
-	return r.FetchWithComponents(tagOrPullspec, []string{})
+func (r *releaseInfoFetcher) FetchWithAllComponents(ctx context.Context, tagOrPullspec string) (*ReleaseInfoResults, error) {
+	return r.FetchWithComponents(ctx, tagOrPullspec, []string{})
 }
 
-func (r *releaseInfoFetcher) getReleaseInfoForPullspec(tagOrPullspec string) (*ReleaseInfoResults, string, error) {
+func (r *releaseInfoFetcher) getReleaseInfoForPullspec(ctx context.Context, tagOrPullspec string) (*ReleaseInfoResults, string, error) {
 	vk, err := GetVersionKind(tagOrPullspec)
 	if err != nil {
 		return nil, "", err
@@ -75,7 +76,7 @@ func (r *releaseInfoFetcher) getReleaseInfoForPullspec(tagOrPullspec string) (*R
 	}
 
 	if vk == SemverVersionKind {
-		ps, err := r.findPullspecForReleaseTag(tagOrPullspec)
+		ps, err := r.findPullspecForReleaseTag(ctx, tagOrPullspec)
 		if err != nil {
 			return nil, "", err
 		}
@@ -87,7 +88,7 @@ func (r *releaseInfoFetcher) getReleaseInfoForPullspec(tagOrPullspec string) (*R
 		return nil, "", fmt.Errorf("invalid versionkind %q", vk)
 	}
 
-	riBytes, err := GetReleaseInfoBytes(pullspec)
+	riBytes, err := GetReleaseInfoBytes(ctx, pullspec)
 	if err != nil {
 		return nil, "", err
 	}
@@ -95,14 +96,14 @@ func (r *releaseInfoFetcher) getReleaseInfoForPullspec(tagOrPullspec string) (*R
 	return &ReleaseInfoResults{ReleaseInfo: riBytes, ComponentMetadata: map[string]json.RawMessage{}}, pullspec, err
 }
 
-func (r *releaseInfoFetcher) findPullspecForReleaseTag(releaseTag string) (string, error) {
-	stream, release, err := r.rc.ReleaseStreams().FindReleaseNameAndStream(releaseTag)
+func (r *releaseInfoFetcher) findPullspecForReleaseTag(ctx context.Context, releaseTag string) (string, error) {
+	stream, release, err := r.rc.ReleaseStreams().FindReleaseNameAndStream(ctx, releaseTag)
 	if err != nil {
 		return "", err
 	}
 
 	// TODO: Check if rejected or ready tags can retrieve a release.
-	tags, err := r.rc.ReleaseStream(stream).TagsByPhase(PhaseAccepted)
+	tags, err := r.rc.ReleaseStream(stream).TagsByPhase(ctx, PhaseAccepted)
 	if err != nil {
 		return "", err
 	}
@@ -116,9 +117,9 @@ func (r *releaseInfoFetcher) findPullspecForReleaseTag(releaseTag string) (strin
 	return "", fmt.Errorf("unknown tag %q for release stream %q", release, stream)
 }
 
-func (r *releaseInfoFetcher) fetchAllComponentMetadata(rl *ReleaseInfo, components []string) ([]componentImageMetadata, error) {
+func (r *releaseInfoFetcher) fetchAllComponentMetadata(ctx context.Context, rl *ReleaseInfo, components []string) ([]componentImageMetadata, error) {
 	resultChan := make(chan componentImageMetadata)
-	g := new(errgroup.Group)
+	g, ctx := errgroup.WithContext(ctx)
 
 	// TODO: Figure out how to make this more configurable.
 	g.SetLimit(10)
@@ -141,7 +142,7 @@ func (r *releaseInfoFetcher) fetchAllComponentMetadata(rl *ReleaseInfo, componen
 	for _, tag := range componentsToFetch {
 		tag := tag
 		g.Go(func() error {
-			cim, err := r.fetchComponentImageMetadata(tag)
+			cim, err := r.fetchComponentImageMetadata(ctx, tag)
 			if err != nil {
 				return err
 			}
@@ -162,8 +163,8 @@ func (r *releaseInfoFetcher) fetchAllComponentMetadata(rl *ReleaseInfo, componen
 	return out, nil
 }
 
-func (r *releaseInfoFetcher) fetchComponentImageMetadata(tag imagev1.TagReference) (*componentImageMetadata, error) {
-	cmd := exec.Command("skopeo", "inspect", "--no-tags", fmt.Sprintf("docker://%s", tag.From.Name))
+func (r *releaseInfoFetcher) fetchComponentImageMetadata(ctx context.Context, tag imagev1.TagReference) (*componentImageMetadata, error) {
+	cmd := exec.CommandContext(ctx, "skopeo", "inspect", "--no-tags", fmt.Sprintf("docker://%s", tag.From.Name))
 
 	outBuf := bytes.NewBuffer([]byte{})
 	cmd.Stdout = outBuf

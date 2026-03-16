@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -8,15 +9,15 @@ import (
 )
 
 type releaseStreamsHelper struct {
-	rc releasecontroller.ReleaseController
+	rc *releasecontroller.ReleaseController
 }
 
-func newReleaseStreamsHelper(rc releasecontroller.ReleaseController) *releaseStreamsHelper {
+func newReleaseStreamsHelper(rc *releasecontroller.ReleaseController) *releaseStreamsHelper {
 	return &releaseStreamsHelper{rc: rc}
 }
 
-func (r *releaseStreamsHelper) AllReleaseStreamNames() ([]string, error) {
-	streams, err := r.rc.ReleaseStreams().All()
+func (r *releaseStreamsHelper) AllReleaseStreamNames(ctx context.Context) ([]string, error) {
+	streams, err := r.rc.ReleaseStreams().All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -31,20 +32,20 @@ func (r *releaseStreamsHelper) AllReleaseStreamNames() ([]string, error) {
 	return out, nil
 }
 
-func (r *releaseStreamsHelper) AllReleasesForReleaseStreams(releaseStreamNames []string) (map[string][]string, error) {
-	return r.filterReleases(releaseStreamNames, r.rc.ReleaseStreams().All)
+func (r *releaseStreamsHelper) AllReleasesForReleaseStreams(ctx context.Context, releaseStreamNames []string) (map[string][]string, error) {
+	return r.filterReleases(ctx, releaseStreamNames, r.rc.ReleaseStreams().All)
 }
 
-func (r *releaseStreamsHelper) AcceptedReleasesForReleaseStreams(releaseStreamNames []string) (map[string][]string, error) {
-	return r.filterReleases(releaseStreamNames, r.rc.ReleaseStreams().Accepted)
+func (r *releaseStreamsHelper) AcceptedReleasesForReleaseStreams(ctx context.Context, releaseStreamNames []string) (map[string][]string, error) {
+	return r.filterReleases(ctx, releaseStreamNames, r.rc.ReleaseStreams().Accepted)
 }
 
-func (r *releaseStreamsHelper) RejectedReleasesForReleaseStreams(releaseStreamNames []string) (map[string][]string, error) {
-	return r.filterReleases(releaseStreamNames, r.rc.ReleaseStreams().Rejected)
+func (r *releaseStreamsHelper) RejectedReleasesForReleaseStreams(ctx context.Context, releaseStreamNames []string) (map[string][]string, error) {
+	return r.filterReleases(ctx, releaseStreamNames, r.rc.ReleaseStreams().Rejected)
 }
 
-func (r *releaseStreamsHelper) filterReleases(keys []string, queryFunc func() (map[string][]string, error)) (map[string][]string, error) {
-	releases, err := queryFunc()
+func (r *releaseStreamsHelper) filterReleases(ctx context.Context, keys []string, queryFunc func(context.Context) (map[string][]string, error)) (map[string][]string, error) {
+	releases, err := queryFunc(ctx)
 	if err != nil {
 		return nil, err
 	}

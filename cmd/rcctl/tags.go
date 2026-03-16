@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
 	"github.com/spf13/cobra"
 )
@@ -21,8 +23,8 @@ func tagsCmd() *cobra.Command {
 	rcctl tags all '4.23.0-0.ci'`,
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return getTagsByPhase(rc, "", args[0])
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return getTagsByPhase(ctx, rc, "", args[0])
 				})
 			},
 		},
@@ -34,8 +36,8 @@ func tagsCmd() *cobra.Command {
 	rcctl tags accepted '4.23.0-0.ci'`,
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return getTagsByPhase(rc, releasecontroller.PhaseAccepted, args[0])
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return getTagsByPhase(ctx, rc, releasecontroller.PhaseAccepted, args[0])
 				})
 			},
 		},
@@ -47,8 +49,8 @@ func tagsCmd() *cobra.Command {
 	rcctl tags ready '4.23.0-0.ci'`,
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return getTagsByPhase(rc, releasecontroller.PhaseReady, args[0])
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return getTagsByPhase(ctx, rc, releasecontroller.PhaseReady, args[0])
 				})
 			},
 		},
@@ -60,8 +62,8 @@ func tagsCmd() *cobra.Command {
 	rcctl tags latest '4.23.0-0.ci'`,
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return rc.ReleaseStream(args[0]).Latest()
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return rc.ReleaseStream(args[0]).Latest(ctx)
 				})
 			},
 		},
@@ -73,8 +75,8 @@ func tagsCmd() *cobra.Command {
 	rcctl tags rejected '4.23.0-0.ci'`,
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return getTagsByPhase(rc, releasecontroller.PhaseRejected, args[0])
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return getTagsByPhase(ctx, rc, releasecontroller.PhaseRejected, args[0])
 				})
 			},
 		},
@@ -87,12 +89,12 @@ func tagsCmd() *cobra.Command {
 	return tagsCmd
 }
 
-func getTagsByPhase(rc releasecontroller.ReleaseController, phase releasecontroller.Phase, releaseStream string) (*releasecontroller.ReleaseTags, error) {
+func getTagsByPhase(ctx context.Context, rc *releasecontroller.ReleaseController, phase releasecontroller.Phase, releaseStream string) (*releasecontroller.ReleaseTags, error) {
 	if phase == "" {
-		return rc.ReleaseStream(releaseStream).Tags()
+		return rc.ReleaseStream(releaseStream).Tags(ctx)
 	}
 
-	return rc.ReleaseStream(releaseStream).TagsByPhase(phase)
+	return rc.ReleaseStream(releaseStream).TagsByPhase(ctx, phase)
 }
 
 func init() {

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
@@ -182,6 +184,9 @@ func getRelease(opts *inputOpts) (string, error) {
 }
 
 func getReleaseFromController(rel release) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	rc, err := releasecontroller.GetReleaseController(rel.kind, rel.arch)
 	if err != nil {
 		return "", err
@@ -189,7 +194,7 @@ func getReleaseFromController(rel release) (string, error) {
 
 	klog.Infof("Getting latest release for stream %s from %s", rel.stream, rc)
 
-	release, err := rc.ReleaseStream(rel.stream).Latest()
+	release, err := rc.ReleaseStream(rel.stream).Latest(ctx)
 	if err != nil {
 		return "", err
 	}

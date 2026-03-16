@@ -2,25 +2,59 @@ package releasecontroller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"time"
 )
 
-type ReleaseController string
+// ReleaseController represents a release controller API client
+type ReleaseController struct {
+	host   string
+	client *http.Client
+}
 
-func (r *ReleaseController) GraphForChannel(channel string) (*ReleaseGraph, error) {
+// ReleaseControllerConfig holds configuration options for the ReleaseController
+type ReleaseControllerConfig struct {
+	DefaultTimeout time.Duration
+	Client         *http.Client // optional user-provided client
+}
+
+// New creates a new ReleaseController with the given host and configuration
+func New(host string, cfg *ReleaseControllerConfig) *ReleaseController {
+	if cfg == nil {
+		cfg = &ReleaseControllerConfig{DefaultTimeout: 30 * time.Second}
+	}
+	client := cfg.Client
+	if client == nil {
+		client = &http.Client{Timeout: cfg.DefaultTimeout}
+	}
+	return &ReleaseController{host: host, client: client}
+}
+
+// Host returns the hostname of the release controller
+func (r *ReleaseController) Host() string {
+	return r.host
+}
+
+// String returns the hostname of the release controller
+func (r *ReleaseController) String() string {
+	return r.host
+}
+
+func (r *ReleaseController) GraphForChannel(ctx context.Context, channel string) (*ReleaseGraph, error) {
 	out := &ReleaseGraph{}
-	err := r.doHTTPRequestIntoStruct("/graph", url.Values{"channel": []string{channel}}, out)
+	err := r.doHTTPRequestIntoStruct(ctx, "/graph", url.Values{"channel": []string{channel}}, out)
 	return out, err
 }
 
-func (r *ReleaseController) Graph() (*ReleaseGraph, error) {
+func (r *ReleaseController) Graph(ctx context.Context) (*ReleaseGraph, error) {
 	out := &ReleaseGraph{}
-	err := r.doHTTPRequestIntoStruct("/graph", nil, out)
+	err := r.doHTTPRequestIntoStruct(ctx, "/graph", nil, out)
 	return out, err
 }
 
@@ -44,20 +78,20 @@ func (r *ReleaseController) ReleaseStream(name string) *ReleaseStream {
 // release info. The sole difference seems to be that $ oc adm release info
 // returns the fully qualified pullspec for the release instead of the tagged
 // pullspec.
-func (r *ReleaseController) GetReleaseInfoBytes(tag string) ([]byte, error) {
-	return r.doHTTPRequestIntoBytes(filepath.Join("releasetag", tag, "json"), url.Values{})
+func (r *ReleaseController) GetReleaseInfoBytes(ctx context.Context, tag string) ([]byte, error) {
+	return r.doHTTPRequestIntoBytes(ctx, filepath.Join("releasetag", tag, "json"), url.Values{})
 }
 
-func (r *ReleaseController) GetReleaseInfo(tag string) (*ReleaseInfo, error) {
+func (r *ReleaseController) GetReleaseInfo(ctx context.Context, tag string) (*ReleaseInfo, error) {
 	out := &ReleaseInfo{}
-	err := r.doHTTPRequestIntoStruct(filepath.Join("releasetag", tag, "json"), url.Values{}, out)
+	err := r.doHTTPRequestIntoStruct(ctx, filepath.Join("releasetag", tag, "json"), url.Values{}, out)
 	return out, err
 }
 
 func (r *ReleaseController) getURLForPath(path string, vals url.Values) url.URL {
 	u := url.URL{
 		Scheme: "https",
-		Host:   string(*r),
+		Host:   r.host,
 		Path:   path,
 	}
 
@@ -68,21 +102,26 @@ func (r *ReleaseController) getURLForPath(path string, vals url.Values) url.URL 
 	return u
 }
 
-func (r *ReleaseController) doHTTPRequest(u url.URL) (*http.Response, error) {
-	resp, err := http.Get(u.String())
+func (r *ReleaseController) doHTTPRequest(ctx context.Context, u url.URL) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := r.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
 		return nil, fmt.Errorf("got HTTP 404 from %s", u.String())
 	}
 
 	return resp, nil
 }
 
-func (r *ReleaseController) doHTTPRequestIntoStruct(path string, vals url.Values, out interface{}) error {
-	resp, err := r.doHTTPRequest(r.getURLForPath(path, vals))
+func (r *ReleaseController) doHTTPRequestIntoStruct(ctx context.Context, path string, vals url.Values, out interface{}) error {
+	resp, err := r.doHTTPRequest(ctx, r.getURLForPath(path, vals))
 	if err != nil {
 		return err
 	}
@@ -92,8 +131,8 @@ func (r *ReleaseController) doHTTPRequestIntoStruct(path string, vals url.Values
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (r *ReleaseController) doHTTPRequestIntoBytes(path string, vals url.Values) ([]byte, error) {
-	resp, err := r.doHTTPRequest(r.getURLForPath(path, vals))
+func (r *ReleaseController) doHTTPRequestIntoBytes(ctx context.Context, path string, vals url.Values) ([]byte, error) {
+	resp, err := r.doHTTPRequest(ctx, r.getURLForPath(path, vals))
 	if err != nil {
 		return nil, err
 	}
@@ -110,16 +149,16 @@ func (r *ReleaseController) doHTTPRequestIntoBytes(path string, vals url.Values)
 }
 
 const (
-	Amd64OcpReleaseController   ReleaseController = "amd64.ocp.releases.ci.openshift.org"
-	Arm64OcpReleaseController   ReleaseController = "arm64.ocp.releases.ci.openshift.org"
-	Ppc64leOcpReleaseController ReleaseController = "ppc64le.ocp.releases.ci.openshift.org"
-	S390xOcpReleaseController   ReleaseController = "s390x.ocp.releases.ci.openshift.org"
-	MultiOcpReleaseController   ReleaseController = "multi.ocp.releases.ci.openshift.org"
-	Amd64OkdReleaseController   ReleaseController = "amd64.origin.releases.ci.openshift.org"
+	Amd64OcpReleaseController   = "amd64.ocp.releases.ci.openshift.org"
+	Arm64OcpReleaseController   = "arm64.ocp.releases.ci.openshift.org"
+	Ppc64leOcpReleaseController = "ppc64le.ocp.releases.ci.openshift.org"
+	S390xOcpReleaseController   = "s390x.ocp.releases.ci.openshift.org"
+	MultiOcpReleaseController   = "multi.ocp.releases.ci.openshift.org"
+	Amd64OkdReleaseController   = "amd64.origin.releases.ci.openshift.org"
 )
 
-func GetReleaseController(kind, arch string) (ReleaseController, error) {
-	rcs := map[string]map[string]ReleaseController{
+func getReleaseControllerHost(kind, arch string) (string, error) {
+	rcs := map[string]map[string]string{
 		"ocp": {
 			"amd64":   Amd64OcpReleaseController,
 			"arm64":   Arm64OcpReleaseController,
@@ -146,8 +185,16 @@ func GetReleaseController(kind, arch string) (ReleaseController, error) {
 	return rcs[kind][arch], nil
 }
 
-func All() []ReleaseController {
-	return []ReleaseController{
+func GetReleaseController(kind, arch string) (*ReleaseController, error) {
+	host, err := getReleaseControllerHost(kind, arch)
+	if err != nil {
+		return nil, err
+	}
+	return New(host, nil), nil
+}
+
+func All() []*ReleaseController {
+	hosts := []string{
 		Amd64OcpReleaseController,
 		Arm64OcpReleaseController,
 		Ppc64leOcpReleaseController,
@@ -155,4 +202,10 @@ func All() []ReleaseController {
 		MultiOcpReleaseController,
 		Amd64OkdReleaseController,
 	}
+
+	rcs := make([]*ReleaseController, 0, len(hosts))
+	for _, host := range hosts {
+		rcs = append(rcs, New(host, nil))
+	}
+	return rcs
 }

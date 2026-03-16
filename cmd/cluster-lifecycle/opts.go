@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/installconfig"
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
@@ -91,7 +93,10 @@ func (i *inputOpts) validateForTeardown() error {
 }
 
 func (i *inputOpts) inferArchAndKindFromPullspec(pullspec string) error {
-	releaseInfo, err := releasecontroller.GetReleaseInfo(pullspec)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	releaseInfo, err := releasecontroller.GetReleaseInfo(ctx, pullspec)
 	if err != nil {
 		return err
 	}

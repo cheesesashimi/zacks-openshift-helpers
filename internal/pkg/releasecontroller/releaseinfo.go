@@ -2,6 +2,7 @@ package releasecontroller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -11,8 +12,8 @@ import (
 )
 
 // There is a way to do this in pure Go, but I'm lazy :P.
-func GetComponentPullspecForRelease(componentName, releasePullspec string) (string, error) {
-	releaseInfo, err := GetReleaseInfo(releasePullspec)
+func GetComponentPullspecForRelease(ctx context.Context, componentName, releasePullspec string) (string, error) {
+	releaseInfo, err := GetReleaseInfo(ctx, releasePullspec)
 	if err != nil {
 		return "", fmt.Errorf("could not get release info for pullspec %q: %w", releasePullspec, err)
 	}
@@ -25,18 +26,18 @@ func GetComponentPullspecForRelease(componentName, releasePullspec string) (stri
 	return tagRef.From.Name, nil
 }
 
-func getReleaseInfoBytes(releasePullspec, authfilePath string) ([]byte, error) {
+func getReleaseInfoBytes(ctx context.Context, releasePullspec, authfilePath string) ([]byte, error) {
 	outBuf := bytes.NewBuffer([]byte{})
 	stderrBuf := bytes.NewBuffer([]byte{})
 
-	opts := []string{"oc", "adm", "release", "info"}
+	opts := []string{"adm", "release", "info"}
 	if authfilePath != "" {
 		opts = append(opts, []string{"--registry-config", authfilePath}...)
 	}
 
 	opts = append(opts, []string{"-o=json", releasePullspec}...)
 
-	cmd := exec.Command(opts[0], opts[1:]...)
+	cmd := exec.CommandContext(ctx, "oc", opts...)
 	cmd.Stdout = outBuf
 	cmd.Stderr = stderrBuf
 
@@ -47,12 +48,12 @@ func getReleaseInfoBytes(releasePullspec, authfilePath string) ([]byte, error) {
 	return outBuf.Bytes(), nil
 }
 
-func GetReleaseInfoBytesWithAuthfile(releasePullspec, authfilePath string) ([]byte, error) {
-	return getReleaseInfoBytes(releasePullspec, authfilePath)
+func GetReleaseInfoBytesWithAuthfile(ctx context.Context, releasePullspec, authfilePath string) ([]byte, error) {
+	return getReleaseInfoBytes(ctx, releasePullspec, authfilePath)
 }
 
-func GetReleaseInfoBytes(releasePullspec string) ([]byte, error) {
-	return getReleaseInfoBytes(releasePullspec, "")
+func GetReleaseInfoBytes(ctx context.Context, releasePullspec string) ([]byte, error) {
+	return getReleaseInfoBytes(ctx, releasePullspec, "")
 }
 
 type Config struct {
@@ -99,16 +100,16 @@ type DisplayVersion struct {
 	DisplayName string `json:"displayName,omitempty"`
 }
 
-func GetReleaseInfo(releasePullspec string) (*ReleaseInfo, error) {
-	return getReleaseInfo(releasePullspec, "")
+func GetReleaseInfo(ctx context.Context, releasePullspec string) (*ReleaseInfo, error) {
+	return getReleaseInfo(ctx, releasePullspec, "")
 }
 
-func GetReleaseInfoWithAuthfile(releasePullspec, authfilePath string) (*ReleaseInfo, error) {
-	return getReleaseInfo(releasePullspec, authfilePath)
+func GetReleaseInfoWithAuthfile(ctx context.Context, releasePullspec, authfilePath string) (*ReleaseInfo, error) {
+	return getReleaseInfo(ctx, releasePullspec, authfilePath)
 }
 
-func getReleaseInfo(releasePullspec, authfilePath string) (*ReleaseInfo, error) {
-	riBytes, err := getReleaseInfoBytes(releasePullspec, authfilePath)
+func getReleaseInfo(ctx context.Context, releasePullspec, authfilePath string) (*ReleaseInfo, error) {
+	riBytes, err := getReleaseInfoBytes(ctx, releasePullspec, authfilePath)
 	if err != nil {
 		return nil, err
 	}

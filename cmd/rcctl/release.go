@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
@@ -41,19 +42,19 @@ func releaseCmd() *cobra.Command {
 				return fmt.Errorf("--all cannot be combined with --component")
 			}
 
-			return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
+			return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
 				rif := releasecontroller.NewReleaseInfoFetcher(rc)
 
 				if allComponentMetadata {
-					return rif.FetchWithAllComponents(args[0])
+					return rif.FetchWithAllComponents(ctx, args[0])
 				}
 
 				if len(components) == 0 {
-					return rif.FetchReleaseInfo(args[0])
+					return rif.FetchReleaseInfo(ctx, args[0])
 				}
 
 				dedupedComponents := sets.New[string](components...).UnsortedList()
-				return rif.FetchWithComponents(args[0], dedupedComponents)
+				return rif.FetchWithComponents(ctx, args[0], dedupedComponents)
 			})
 		},
 	}
@@ -69,18 +70,13 @@ func releaseCmd() *cobra.Command {
 	# Gets release info from the release controller for a given release tag.
 	rcctl release info '4.21.4-x86_64'`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-				rc, err := getReleaseController()
+			return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+				stream, release, err := rc.ReleaseStreams().FindReleaseNameAndStream(ctx, args[0])
 				if err != nil {
 					return nil, err
 				}
 
-				stream, release, err := rc.ReleaseStreams().FindReleaseNameAndStream(args[0])
-				if err != nil {
-					return nil, err
-				}
-
-				return rc.ReleaseStream(stream).Tag(release)
+				return rc.ReleaseStream(stream).Tag(ctx, release)
 			})
 		},
 	}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	"github.com/cheesesashimi/zacks-openshift-helpers/internal/pkg/releasecontroller"
 	"github.com/spf13/cobra"
 )
@@ -43,8 +45,8 @@ func releaseStreamsNamesCmd() *cobra.Command {
 			Use:   "all [releasestream]",
 			Short: "List all release names",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return newReleaseStreamsHelper(rc).AllReleasesForReleaseStreams(args)
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return newReleaseStreamsHelper(rc).AllReleasesForReleaseStreams(ctx, args)
 				})
 			},
 		},
@@ -52,8 +54,8 @@ func releaseStreamsNamesCmd() *cobra.Command {
 			Use:   "accepted [releasestream]",
 			Short: "List only accepted release names",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return newReleaseStreamsHelper(rc).AcceptedReleasesForReleaseStreams(args)
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return newReleaseStreamsHelper(rc).AcceptedReleasesForReleaseStreams(ctx, args)
 				})
 			},
 		},
@@ -61,8 +63,8 @@ func releaseStreamsNamesCmd() *cobra.Command {
 			Use:   "rejected [releasestream]",
 			Short: "List only rejected release names",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-					return newReleaseStreamsHelper(rc).RejectedReleasesForReleaseStreams(args)
+				return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+					return newReleaseStreamsHelper(rc).RejectedReleasesForReleaseStreams(ctx, args)
 				})
 			},
 		},
@@ -85,8 +87,8 @@ func releaseStreamCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all releasestreams on the release controller",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-				return newReleaseStreamsHelper(rc).AllReleaseStreamNames()
+			return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+				return newReleaseStreamsHelper(rc).AllReleaseStreamNames(ctx)
 			})
 		},
 	}
@@ -96,8 +98,8 @@ func releaseStreamCmd() *cobra.Command {
 		Short: "Shows the configuration for the given releasestream",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return doReleaseControllerOp(func(rc releasecontroller.ReleaseController) (interface{}, error) {
-				return rc.ReleaseStream(args[0]).Config()
+			return doReleaseControllerOp(func(ctx context.Context, rc *releasecontroller.ReleaseController) (interface{}, error) {
+				return rc.ReleaseStream(args[0]).Config(ctx)
 			})
 		},
 	}

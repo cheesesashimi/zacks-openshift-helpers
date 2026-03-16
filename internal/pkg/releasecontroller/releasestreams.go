@@ -1,13 +1,16 @@
 package releasecontroller
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type ReleaseStreams struct {
 	rc *ReleaseController
 }
 
-func (r *ReleaseStreams) FindReleaseNameAndStream(name string) (string, string, error) {
-	streams, err := r.All()
+func (r *ReleaseStreams) FindReleaseNameAndStream(ctx context.Context, name string) (string, string, error) {
+	streams, err := r.All(ctx)
 	if err != nil {
 		return "", "", err
 	}
@@ -23,26 +26,26 @@ func (r *ReleaseStreams) FindReleaseNameAndStream(name string) (string, string, 
 	return "", "", fmt.Errorf("could not find release %q", name)
 }
 
-func (r *ReleaseStreams) Accepted() (map[string][]string, error) {
-	return r.doHTTPRequestIntoMapString("/api/v1/releasestreams/accepted")
+func (r *ReleaseStreams) Accepted(ctx context.Context) (map[string][]string, error) {
+	return r.doHTTPRequestIntoMapString(ctx, "/api/v1/releasestreams/accepted")
 }
 
-func (r *ReleaseStreams) Rejected() (map[string][]string, error) {
-	return r.doHTTPRequestIntoMapString("/api/v1/releasestreams/rejected")
+func (r *ReleaseStreams) Rejected(ctx context.Context) (map[string][]string, error) {
+	return r.doHTTPRequestIntoMapString(ctx, "/api/v1/releasestreams/rejected")
 }
 
-func (r *ReleaseStreams) All() (map[string][]string, error) {
-	return r.doHTTPRequestIntoMapString("/api/v1/releasestreams/all")
+func (r *ReleaseStreams) All(ctx context.Context) (map[string][]string, error) {
+	return r.doHTTPRequestIntoMapString(ctx, "/api/v1/releasestreams/all")
 }
 
-func (r *ReleaseStreams) Approvals() ([]Release, error) {
+func (r *ReleaseStreams) Approvals(ctx context.Context) ([]Release, error) {
 	out := []Release{}
-	err := r.rc.doHTTPRequestIntoStruct("/api/v1/releasestreams/approvals", nil, &out)
+	err := r.rc.doHTTPRequestIntoStruct(ctx, "/api/v1/releasestreams/approvals", nil, &out)
 	return out, err
 }
 
-func (r *ReleaseStreams) doHTTPRequestIntoMapString(path string) (map[string][]string, error) {
+func (r *ReleaseStreams) doHTTPRequestIntoMapString(ctx context.Context, path string) (map[string][]string, error) {
 	out := map[string][]string{}
-	err := r.rc.doHTTPRequestIntoStruct(path, nil, &out)
+	err := r.rc.doHTTPRequestIntoStruct(ctx, path, nil, &out)
 	return out, err
 }
